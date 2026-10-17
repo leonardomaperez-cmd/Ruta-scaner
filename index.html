@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#16202b">
+<title>Ruta Escáner</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: mapa arriba (como Zeo/Circuit), panel con pestañas abajo: Escanear · Paradas · Ajustes */
+:root {
+  --bg: #eef1f4; --surface: #ffffff; --ink: #16202b; --muted: #5b6774; --line: #d3d9e0;
+  --accent: #f2b705; --accent-ink: #1b1600; --ok: #1f7a4d; --bad: #b3261e;
+  --display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0f151c; --surface: #18212b; --ink: #e8edf2; --muted: #9aa7b4; --line: #2b3744; --accent: #f5c32c; --ok: #58c08b; --bad: #ff8a80; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--body); display: flex; flex-direction: column; padding-top: env(safe-area-inset-top, 0px); }
+#map { height: 42vh; min-height: 220px; flex: none; background: var(--line); }
+.panel { flex: 1; overflow-y: auto; padding-inline: 16px; padding-block: 12px calc(24px + env(safe-area-inset-bottom, 0px)); }
+.wrap { max-width: 640px; margin: 0 auto; display: grid; gap: 14px; }
+.tabs { display: flex; gap: 6px; position: sticky; top: -12px; background: var(--bg); padding-block: 12px 6px; margin-top: -12px; z-index: 5; }
+.tab { flex: 1; font: 700 1.05rem var(--display); text-transform: uppercase; letter-spacing: .04em; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 10px; padding: 10px 6px; cursor: pointer; }
+.tab[aria-selected="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.label { font-size: .72rem; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); font-weight: 600; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: grid; gap: 12px; }
+.btn { font: 600 1rem var(--body); border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 12px 16px; cursor: pointer; min-height: 46px; text-align: center; text-decoration: none; display: block; }
+.btn-primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; font: 700 1.3rem var(--display); text-transform: uppercase; letter-spacing: .04em; padding: 14px; }
+.btn[disabled] { opacity: .5; }
+.btn:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; }
+.row > * { flex: 1 1 140px; }
+textarea, input[type=text], input[type=password], input[type=search] { width: 100%; font: 500 1rem/1.4 var(--body); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; min-width: 0; }
+textarea { resize: vertical; min-height: 70px; }
+.preview { display: grid; grid-template-columns: 84px 1fr; gap: 12px; align-items: start; }
+.preview img { width: 84px; height: 84px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
+.status { color: var(--muted); font-size: .92rem; min-width: 0; }
+.status.err { color: var(--bad); }
+.status.ok { color: var(--ok); font-weight: 600; }
+.lines { display: grid; gap: 6px; }
+.lines button { text-align: left; font: 500 .92rem var(--body); background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; cursor: pointer; }
+.lines button.on { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.assign { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.tag { font: 600 1.5rem var(--mono); background: var(--ink); color: var(--bg); border-radius: 8px; padding: 4px 12px; font-variant-numeric: tabular-nums; }
+.assign .btn { flex: 1 1 160px; }
+.summary { font: 600 1.1rem var(--mono); font-variant-numeric: tabular-nums; }
+ol.stops { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+ol.stops li { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: start; padding: 10px 12px; border-top: 1px solid var(--line); }
+ol.stops li:first-child { border-top: 0; }
+ol.stops li.done { opacity: .55; }
+ol.stops li.done .addr { text-decoration: line-through; }
+.badge { display: grid; place-items: center; min-width: 2.2em; height: 2.2em; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font: 700 .95rem var(--mono); border: 2px solid var(--ink); }
+.badge.none { background: var(--bg); color: var(--muted); border-color: var(--line); }
+.addr { min-width: 0; overflow-wrap: anywhere; }
+.addr small { display: block; color: var(--muted); font: 500 .8rem var(--mono); }
+.acts { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.mini { background: none; border: 1px solid var(--line); color: var(--ink); font: 500 .8rem var(--body); border-radius: 8px; padding: 6px 8px; cursor: pointer; text-decoration: none; }
+.mini.confirm { color: var(--bad); border-color: var(--bad); font-weight: 600; }
+.empty { padding: 20px 14px; text-align: center; color: var(--muted); display: block !important; }
+.note { color: var(--muted); font-size: .82rem; }
+.check { display: flex; gap: 8px; align-items: center; }
+[hidden] { display: none !important; }
+/* marcadores numerados */
+.pin { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: #f2b705; border: 2px solid #16202b; box-shadow: 0 2px 4px rgba(0,0,0,.35); }
+.pin span { transform: rotate(45deg); font: 700 13px "IBM Plex Mono", monospace; color: #1b1600; }
+.pin.start { background: #16202b; } .pin.start span { color: #fff; }
+.pin.done { background: #9aa7b4; }
+.pin.unordered { background: #fff; }
+.leaflet-popup-content { font: 14px/1.4 "IBM Plex Sans", system-ui, sans-serif; }
+</style>
+</head>
+<body>
+<div id="map" role="region" aria-label="Mapa de paradas"></div>
+<div class="panel">
+ <div class="wrap">
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="t-scan" aria-selected="true" data-p="p-scan">Escanear</button>
+    <button class="tab" role="tab" id="t-stops" aria-selected="false" data-p="p-stops">Paradas <span id="countTab"></span></button>
+    <button class="tab" role="tab" id="t-set" aria-selected="false" data-p="p-set">Ajustes</button>
+  </div>
+
+  <section id="p-scan" class="wrap">
+    <div class="card">
+      <input id="photo" type="file" accept="image/*" capture="environment" hidden>
+      <input id="gallery" type="file" accept="image/*" hidden>
+      <button id="scanBtn" class="btn btn-primary" type="button">Escanear dirección</button>
+      <div class="row">
+        <button id="galleryBtn" class="btn" type="button">Elegir foto</button>
+        <button id="manualBtn" class="btn" type="button">Escribir a mano</button>
+      </div>
+      <div id="stage" hidden>
+        <div class="preview" id="previewBox" hidden>
+          <img id="previewImg" alt="Foto escaneada">
+          <div class="status" id="scanStatus" role="status"></div>
+        </div>
+        <div class="lines" id="lines" hidden></div>
+        <label class="label" for="addrInput" style="display:block;margin-top:10px">Dirección</label>
+        <textarea id="addrInput" placeholder="Ej.: Av. Corrientes 1234, CABA"></textarea>
+        <div class="assign" style="margin-top:10px">
+          <div class="tag" id="nextTag">0001</div>
+          <button id="saveBtn" class="btn btn-primary" type="button">Guardar</button>
+        </div>
+      </div>
+      <div id="toast" class="status ok" role="status" hidden></div>
+    </div>
+  </section>
+
+  <section id="p-stops" class="wrap" hidden>
+    <div class="card">
+      <button id="optBtn" class="btn btn-primary" type="button">Optimizar ruta</button>
+      <div class="status" id="optStatus" role="status"></div>
+      <div class="summary" id="summary" hidden></div>
+      <a id="navAll" class="btn" target="_blank" rel="noopener" hidden>Navegar en Google Maps (próximas 10)</a>
+    </div>
+    <ol class="stops" id="stops"></ol>
+    <div class="row">
+      <button id="exportBtn" class="btn" type="button">Exportar CSV</button>
+      <button id="clearDone" class="btn" type="button">Quitar entregadas</button>
+    </div>
+  </section>
+
+  <section id="p-set" class="wrap" hidden>
+    <div class="card">
+      <label class="label" for="keyInput">Clave de TomTom</label>
+      <input id="keyInput" type="password" autocomplete="off" placeholder="Pega tu clave (API key)">
+      <span class="note">Se guarda solo en este teléfono. Se saca gratis en developer.tomtom.com (20.000 rutas y 20.000 búsquedas al mes).</span>
+      <label class="label" for="geminiInput">Clave de Gemini (lectura con inteligencia artificial)</label>
+      <input id="geminiInput" type="password" autocomplete="off" placeholder="Pega tu clave de Google AI Studio">
+      <span class="note">Opcional y gratis en aistudio.google.com. Con ella, la foto la lee Gemini y saca solo la dirección del destinatario. Sin ella, se lee en el teléfono. En el plan gratuito Google puede usar las fotos para mejorar sus productos.</span>
+      <label class="label" for="startInput">Punto de partida</label>
+      <input id="startInput" type="text" placeholder="Ej.: Depósito, Av. Rivadavia 5000, CABA">
+      <label class="check"><input id="returnChk" type="checkbox"> Volver al punto de partida al final</label>
+      <label class="label" for="countryInput">País (código de 2 letras, opcional)</label>
+      <input id="countryInput" type="text" maxlength="2" placeholder="Ej.: AR, MX, CL, ES">
+      <span class="note">El país ayuda a que TomTom no confunda calles con el mismo nombre en otros países.</span>
+    </div>
+    <p class="note">Las paradas se guardan en este teléfono. Exporta el CSV si quieres guardarlas aparte.</p>
+  </section>
+ </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const KEY = "ruta-escaner-v1";
+  const pad = (n) => String(n).padStart(4, "0");
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(KEY + ":" + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem(KEY + ":" + k, JSON.stringify(v)); } catch {} },
+  };
+
+  // items: {num, address, createdAt, lat?, lng?, done?}; route: {order:[num], summary, line:[[lat,lng]], start:{lat,lng}}
+  let items = store.get("items", []);
+  let route = store.get("route", null);
+  const save = () => { store.set("items", items); store.set("route", route); };
+  const nextNum = () => items.reduce((m, it) => Math.max(m, it.num), 0) + 1;
+  const byNum = (n) => items.find(it => it.num === n);
+
+  // ---------- pestañas ----------
+  function showTab(id) {
+    document.querySelectorAll(".tab").forEach(t => {
+      const on = t.dataset.p === id;
+      t.setAttribute("aria-selected", on);
+      $(t.dataset.p).hidden = !on;
+    });
+    if (id === "p-stops") setTimeout(() => map.invalidateSize(), 50);
+  }
+  document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => showTab(t.dataset.p)));
+
+  // ---------- mapa ----------
+  const map = L.map("map", { zoomControl: true }).setView([-34.6037, -58.3816], 11);
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+  }).addTo(map);
+  const layer = L.layerGroup().addTo(map);
+  const pinIcon = (text, cls) => L.divIcon({ className: "", html: `<div class="pin ${cls || ""}"><span>${text}</span></div>`, iconSize: [32, 32], iconAnchor: [16, 32], popupAnchor: [0, -30] });
+  const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const gmaps = (it) => "https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=" +
+    encodeURIComponent(typeof it.lat === "number" ? it.lat + "," + it.lng : it.address);
+
+  function orderedItems() {
+    if (!route) return items.slice().sort((a, b) => a.num - b.num);
+    const inRoute = route.order.map(byNum).filter(Boolean);
+    const rest = items.filter(it => !route.order.includes(it.num)).sort((a, b) => a.num - b.num);
+    return [...inRoute, ...rest];
+  }
+
+  function drawMap(fit) {
+    layer.clearLayers();
+    const pts = [];
+    if (route && route.line && route.line.length) L.polyline(route.line, { color: "#16202b", weight: 5, opacity: .75 }).addTo(layer);
+    if (route && route.start) {
+      L.marker([route.start.lat, route.start.lng], { icon: pinIcon("S", "start") }).bindPopup("<b>Salida</b>").addTo(layer);
+      pts.push([route.start.lat, route.start.lng]);
+    }
+    orderedItems().forEach((it) => {
+      if (typeof it.lat !== "number") return;
+      const stop = route ? route.order.indexOf(it.num) + 1 : 0;
+      const m = L.marker([it.lat, it.lng], { icon: pinIcon(stop || it.num, it.done ? "done" : (stop ? "" : "unordered")) });
+      m.bindPopup(`<b>${stop ? "Parada " + stop + " · " : ""}Nº ${pad(it.num)}</b><br>${esc(it.address)}<br><a href="${gmaps(it)}" target="_blank" rel="noopener">Navegar aquí</a>`);
+      m.addTo(layer);
+      pts.push([it.lat, it.lng]);
+    });
+    if (fit && pts.length) map.fitBounds(pts, { padding: [30, 30], maxZoom: 16 });
+  }
+
+  // ---------- lista ----------
+  let pendingDelete = null;
+  function render() {
+    $("nextTag").textContent = pad(nextNum());
+    $("countTab").textContent = items.length ? "(" + items.length + ")" : "";
+    const ol = $("stops"); ol.textContent = "";
+    const list = orderedItems();
+    if (!list.length) {
+      const li = document.createElement("li"); li.className = "empty";
+      li.textContent = "Todavía no hay paradas. Escanea una etiqueta y la primera quedará como Nº 0001.";
+      ol.append(li);
+    }
+    list.forEach((it) => {
+      const stop = route ? route.order.indexOf(it.num) + 1 : 0;
+      const li = document.createElement("li"); if (it.done) li.className = "done";
+      const b = document.createElement("span"); b.className = "badge" + (stop ? "" : " none"); b.textContent = stop || "–";
+      b.title = stop ? "Orden en la ruta" : "Sin ordenar";
+      const a = document.createElement("div"); a.className = "addr";
+      const small = document.createElement("small"); small.textContent = "Nº " + pad(it.num) + (typeof it.lat === "number" ? "" : " · sin ubicar");
+      a.append(small, document.createTextNode(it.address));
+      a.style.cursor = "pointer";
+      a.addEventListener("click", () => { if (typeof it.lat === "number") { map.setView([it.lat, it.lng], 16); window.scrollTo(0, 0); } });
+      const acts = document.createElement("div"); acts.className = "acts";
+      const nav = document.createElement("a"); nav.className = "mini"; nav.textContent = "Ir"; nav.href = gmaps(it); nav.target = "_blank"; nav.rel = "noopener";
+      const done = document.createElement("button"); done.className = "mini"; done.type = "button"; done.textContent = it.done ? "Deshacer" : "Entregada";
+      done.addEventListener("click", () => { it.done = !it.done; save(); refresh(false); });
+      const del = document.createElement("button"); del.type = "button"; del.className = "mini" + (pendingDelete === it.num ? " confirm" : "");
+      del.textContent = pendingDelete === it.num ? "¿Borrar?" : "Borrar";
+      del.addEventListener("click", () => {
+        if (pendingDelete !== it.num) { pendingDelete = it.num; render(); return; }
+        pendingDelete = null; items = items.filter(x => x.num !== it.num);
+        if (route) route.order = route.order.filter(n => n !== it.num);
+        save(); refresh(false);
+      });
+      acts.append(nav, done, del);
+      li.append(b, a, acts); ol.append(li);
+    });
+    if (route && route.summary) { $("summary").textContent = route.summary; $("summary").hidden = false; } else $("summary").hidden = true;
+    const pending = list.filter(it => !it.done).slice(0, 10);
+    if (pending.length) {
+      const u = new URL("https://www.google.com/maps/dir/");
+      u.searchParams.set("api", "1"); u.searchParams.set("travelmode", "driving");
+      const loc = (it) => typeof it.lat === "number" ? it.lat + "," + it.lng : it.address;
+      u.searchParams.set("destination", loc(pending[pending.length - 1]));
+      if (pending.length > 1) u.searchParams.set("waypoints", pending.slice(0, -1).map(loc).join("|"));
+      $("navAll").href = u.toString(); $("navAll").hidden = false;
+    } else $("navAll").hidden = true;
+  }
+  function refresh(fit) { render(); drawMap(fit); }
+
+  // ---------- escaneo (lectura en el teléfono) ----------
+  async function shrink(file, max = 1800, gray = true) {
+    try {
+      const bmp = await createImageBitmap(file);
+      const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+      const g = c.getContext("2d"); if (gray) g.filter = "grayscale(1) contrast(1.4)";
+      g.drawImage(bmp, 0, 0, c.width, c.height);
+      return await new Promise(r => c.toBlob(b => r(b || file), "image/jpeg", 0.9));
+    } catch { return file; }
+  }
+  let ocr = null;
+  async function readText(img, onP) {
+    if (!window.Tesseract) throw new Error("no se pudo cargar el lector");
+    if (!ocr) ocr = await Tesseract.createWorker("spa", 1, { logger: m => { if (typeof m.progress === "number") onP(m.progress); } });
+    const { data } = await ocr.recognize(img);
+    return String(data.text || "").split("\n").map(l => l.replace(/[|_~«»]+/g, " ").replace(/\s+/g, " ").trim()).filter(l => l.length > 2);
+  }
+  // Marca de entrada las líneas que parecen dirección: tienen número y palabras de calle o código postal.
+  const looksAddress = (l) => /\d/.test(l) && (/\b(av|avda|avenida|calle|c\/|pje|pasaje|ruta|km|blvd|bv|boulevard|diag|piso|dpto|depto|cp|col|colonia|barrio|n[º°o]\.?)\b/i.test(l) || /\b[A-Z]?\d{4,5}[A-Z]{0,3}\b/.test(l) || /^[A-ZÁÉÍÓÚÑa-záéíóúñ.' ]+ \d{1,5}\b/.test(l));
+
+  function setLines(lines) {
+    const box = $("lines"); box.textContent = "";
+    if (!lines.length) { box.hidden = true; return; }
+    const sel = new Set(lines.map((l, i) => looksAddress(l) ? i : -1).filter(i => i >= 0));
+    const sync = () => { $("addrInput").value = lines.filter((_, i) => sel.has(i)).join(", "); };
+    const note = document.createElement("span"); note.className = "note"; note.textContent = "Toca las líneas que forman la dirección:";
+    box.append(note);
+    lines.forEach((l, i) => {
+      const b = document.createElement("button"); b.type = "button"; b.textContent = l;
+      b.className = sel.has(i) ? "on" : "";
+      b.addEventListener("click", () => { sel.has(i) ? sel.delete(i) : sel.add(i); b.className = sel.has(i) ? "on" : ""; sync(); });
+      box.append(b);
+    });
+    box.hidden = false; sync();
+  }
+
+  // Gemini: devuelve la dirección del destinatario o "" si no la encuentra.
+  const GEMINI_MODELS = ["gemini-flash-latest", "gemini-3.6-flash", "gemini-3.5-flash-lite"];
+  async function readWithGemini(img, key) {
+    const b64 = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(",")[1]); fr.onerror = rej; fr.readAsDataURL(img); });
+    const body = { contents: [{ parts: [
+      { inline_data: { mime_type: img.type || "image/jpeg", data: b64 } },
+      { text: "La imagen es una etiqueta de envío, paquete o sobre. Extrae la dirección del DESTINATARIO (no la del remitente). " +
+        "Responde solo JSON: {\"encontrada\": true|false, \"direccion\": \"calle y número, piso/depto, localidad, provincia, código postal\"}. " +
+        "Una sola línea separada por comas, tal como aparece, sin inventar datos." },
+    ] }], generationConfig: { responseMimeType: "application/json", temperature: 0 } };
+    let last = "";
+    for (const model of GEMINI_MODELS) {
+      const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent", {
+        method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": key }, body: JSON.stringify(body) });
+      if (r.status === 404) { last = "modelo no disponible"; continue; }
+      if (r.status === 400 || r.status === 401 || r.status === 403) { const t = await r.text().catch(() => ""); throw new Error(/API_KEY|key/i.test(t) ? "clave de Gemini no válida" : "Gemini respondió " + r.status); }
+      if (r.status === 429) throw new Error("se acabó el cupo gratis de Gemini por ahora");
+      if (!r.ok) throw new Error("Gemini respondió " + r.status);
+      const j = await r.json();
+      const txt = j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts && j.candidates[0].content.parts.map(p => p.text || "").join("");
+      const m = String(txt || "").match(/\{[\s\S]*\}/);
+      const o = m ? JSON.parse(m[0]) : null;
+      return o && o.encontrada && o.direccion ? String(o.direccion).trim() : "";
+    }
+    throw new Error(last || "Gemini no respondió");
+  }
+
+  async function onPhoto(file) {
+    $("stage").hidden = false; $("previewBox").hidden = false; $("lines").hidden = true;
+    $("previewImg").src = URL.createObjectURL(file); $("addrInput").value = "";
+    const st = $("scanStatus"); const say = (m, c) => { st.className = "status" + (c ? " " + c : ""); st.textContent = m; };
+    say("Preparando la foto…"); $("saveBtn").disabled = true;
+    const gkey = $("geminiInput").value.trim();
+    if (gkey) {
+      try {
+        say("Gemini está leyendo la dirección…");
+        const addr = await readWithGemini(await shrink(file, 1600, false), gkey);
+        $("saveBtn").disabled = false;
+        if (addr) { $("addrInput").value = addr; say("Dirección leída por Gemini. Revísala y guárdala.", "ok"); return; }
+        say("Gemini no encontró una dirección. Probando lectura en el teléfono…");
+      } catch (e) { say("Gemini: " + (e.message || e) + ". Probando lectura en el teléfono…"); }
+    }
+    try {
+      const img = await shrink(file);
+      const lines = await readText(img, p => say("Leyendo… " + Math.round(p * 100) + "%"));
+      if (!lines.length) { say("No se encontró texto. Prueba más cerca y con buena luz.", "err"); return; }
+      setLines(lines);
+      say("Revisa la dirección y guárdala.");
+    } catch (e) {
+      say("No se pudo leer la foto (" + (e.message || e) + "). Escríbela a mano.", "err");
+    } finally { $("saveBtn").disabled = false; }
+  }
+
+  $("scanBtn").addEventListener("click", () => $("photo").click());
+  $("galleryBtn").addEventListener("click", () => $("gallery").click());
+  ["photo", "gallery"].forEach(id => $(id).addEventListener("change", e => { const f = e.target.files[0]; if (f) onPhoto(f); e.target.value = ""; }));
+  $("manualBtn").addEventListener("click", () => { $("stage").hidden = false; $("previewBox").hidden = true; $("lines").hidden = true; $("addrInput").focus(); });
+
+  function toast(m, bad) { const t = $("toast"); t.textContent = m; t.className = "status " + (bad ? "err" : "ok"); t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 3500); }
+
+  $("saveBtn").addEventListener("click", async () => {
+    const address = $("addrInput").value.replace(/\s+/g, " ").trim();
+    if (!address) { toast("Escribe o escanea una dirección primero.", true); return; }
+    const it = { num: nextNum(), address, createdAt: new Date().toISOString() };
+    items.push(it); save();
+    $("stage").hidden = true; $("addrInput").value = "";
+    toast("Guardada como Nº " + pad(it.num));
+    refresh(false);
+    const key = $("keyInput").value.trim();
+    if (key) { try { const g = await geocode(it.address, key); if (g) { it.lat = g.lat; it.lng = g.lng; save(); refresh(true); } } catch {} }
+  });
+
+  // ---------- TomTom ----------
+  async function geocode(text, key) {
+    const u = new URL("https://api.tomtom.com/search/2/geocode/" + encodeURIComponent(text) + ".json");
+    u.searchParams.set("key", key); u.searchParams.set("limit", "1"); u.searchParams.set("language", "es-ES");
+    const cc = $("countryInput").value.trim().toUpperCase(); if (/^[A-Z]{2}$/.test(cc)) u.searchParams.set("countrySet", cc);
+    const r = await fetch(u);
+    if (r.status === 403 || r.status === 401) throw new Error("clave de TomTom no válida");
+    if (!r.ok) throw new Error("TomTom respondió " + r.status);
+    const j = await r.json(); const p = j.results && j.results[0] && j.results[0].position;
+    return p ? { lat: p.lat, lng: p.lon } : null;
+  }
+
+  async function optimize() {
+    const st = $("optStatus"); const say = (m, c) => { st.className = "status" + (c ? " " + c : ""); st.textContent = m; };
+    const key = $("keyInput").value.trim();
+    if (!key) { say("Falta tu clave de TomTom. Ponla en Ajustes.", "err"); showTab("p-set"); $("keyInput").focus(); return; }
+    const todo = items.filter(it => !it.done);
+    if (!todo.length) { say("No hay paradas pendientes.", "err"); return; }
+    const startText = $("startInput").value.trim();
+    $("optBtn").disabled = true;
+    try {
+      for (let i = 0; i < todo.length; i++) {
+        const it = todo[i];
+        if (typeof it.lat !== "number") {
+          say("Ubicando direcciones… " + (i + 1) + "/" + todo.length);
+          const g = await geocode(it.address, key);
+          if (g) { it.lat = g.lat; it.lng = g.lng; }
+        }
+      }
+      save();
+      const located = todo.filter(it => typeof it.lat === "number");
+      const missing = todo.length - located.length;
+      if (!located.length) { say("TomTom no encontró ninguna dirección. Revisa que tengan calle, número y ciudad.", "err"); return; }
+      let start;
+      if (startText) { say("Ubicando el punto de partida…"); start = await geocode(startText, key); if (!start) { say("No encontré el punto de partida. Escríbelo con calle, número y ciudad.", "err"); return; } }
+      else start = { lat: located[0].lat, lng: located[0].lng };
+      const back = $("returnChk").checked;
+      // TomTom reordena las paradas intermedias entre salida y llegada fijas (máx. 150).
+      // Sin regreso: se calcula ida y vuelta y se descarta el último tramo.
+      const stops = located.slice(0, 148);
+      const pts = [start, ...stops, start];
+      say("Calculando la mejor ruta…");
+      const u = new URL("https://api.tomtom.com/routing/1/calculateRoute/" + pts.map(p => p.lat + "," + p.lng).join(":") + "/json");
+      u.searchParams.set("key", key); u.searchParams.set("computeBestOrder", "true"); u.searchParams.set("routeType", "fastest");
+      u.searchParams.set("traffic", "true"); u.searchParams.set("travelMode", "car");
+      const r = await fetch(u);
+      if (r.status === 403 || r.status === 401) throw new Error("clave de TomTom no válida");
+      if (!r.ok) { const t = await r.text().catch(() => ""); throw new Error("TomTom respondió " + r.status + (t ? ": " + t.slice(0, 120) : "")); }
+      const j = await r.json();
+      const ow = (j.optimizedWaypoints || []).slice().sort((a, b) => a.optimizedIndex - b.optimizedIndex);
+      const orderIdx = ow.length ? ow.map(w => w.providedIndex) : stops.map((_, i) => i);
+      const order = orderIdx.map(i => stops[i].num);
+      const legs = (j.routes && j.routes[0] && j.routes[0].legs) || [];
+      const useLegs = back ? legs : legs.slice(0, -1);
+      let m = 0, s = 0; const line = [];
+      useLegs.forEach(l => { m += l.summary.lengthInMeters; s += l.summary.travelTimeInSeconds; (l.points || []).forEach(p => line.push([p.latitude, p.longitude])); });
+      const min = Math.round(s / 60);
+      route = {
+        order, line, start: startText ? start : null,
+        summary: (m / 1000).toFixed(1) + " km · " + (min >= 60 ? Math.floor(min / 60) + " h " + (min % 60) + " min" : min + " min") + (back ? " ida y vuelta" : ""),
+      };
+      save(); refresh(true);
+      say(missing ? missing + " dirección(es) no se encontraron en el mapa y quedaron sin ordenar." : (located.length > 148 ? "Se ordenaron las primeras 148 paradas." : "Ruta optimizada."), missing ? "err" : "ok");
+    } catch (e) {
+      say("No se pudo optimizar: " + (e.message || e), "err");
+    } finally { $("optBtn").disabled = false; }
+  }
+  $("optBtn").addEventListener("click", optimize);
+
+  // ---------- ajustes, exportar ----------
+  [["keyInput", "key"], ["geminiInput", "gemini"], ["startInput", "start"], ["countryInput", "country"]].forEach(([id, k]) => {
+    $(id).value = store.get(k, "");
+    $(id).addEventListener("change", () => store.set(k, $(id).value.trim()));
+  });
+  $("returnChk").checked = store.get("back", false);
+  $("returnChk").addEventListener("change", () => store.set("back", $("returnChk").checked));
+
+  $("clearDone").addEventListener("click", () => {
+    const n = items.filter(i => i.done).length; if (!n) { return; }
+    items = items.filter(i => !i.done); if (route) route.order = route.order.filter(x => byNum(x)); save(); refresh(false);
+  });
+  $("exportBtn").addEventListener("click", () => {
+    const q = (s) => '"' + String(s).replace(/"/g, '""') + '"';
+    const rows = orderedItems().map(it => [route ? (route.order.indexOf(it.num) + 1 || "") : "", pad(it.num), q(it.address), it.lat ?? "", it.lng ?? "", it.done ? "si" : "no"].join(","));
+    const csv = "﻿parada,numero,direccion,lat,lng,entregada\n" + rows.join("\n") + "\n";
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    a.download = "paradas.csv"; document.body.append(a); a.click(); a.remove();
+  });
+
+  if (!$("keyInput").value) showTab("p-set");
+  refresh(true);
+})();
+</script>
+</body>
+</html>
