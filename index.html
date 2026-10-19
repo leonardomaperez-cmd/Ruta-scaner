@@ -129,9 +129,9 @@ ol.stops li.done .addr { text-decoration: line-through; }
 
   <section id="p-set" class="wrap" hidden>
     <div class="card">
-      <label class="label" for="keyInput">Clave de TomTom</label>
+      <label class="label" for="keyInput">Clave de TomTom (opcional)</label>
       <input id="keyInput" type="password" autocomplete="off" placeholder="Pega tu clave (API key)">
-      <span class="note">Se guarda solo en este teléfono. Se saca gratis en developer.tomtom.com (20.000 rutas y 20.000 búsquedas al mes).</span>
+      <span class="note">Sin clave, la app usa mapas gratuitos de OpenStreetMap para ubicar y ordenar las paradas, sin cuenta. Con una clave de TomTom (gratis en developer.tomtom.com) la ruta tiene en cuenta el tráfico. Se guarda solo en este teléfono.</span>
       <label class="label" for="geminiInput">Clave de Gemini (lectura con inteligencia artificial)</label>
       <input id="geminiInput" type="password" autocomplete="off" placeholder="Pega tu clave de Google AI Studio">
       <span class="note">Opcional y gratis en aistudio.google.com. Con ella, la foto la lee Gemini y saca solo la dirección del destinatario. Sin ella, se lee en el teléfono. En el plan gratuito Google puede usar las fotos para mejorar sus productos.</span>
@@ -370,12 +370,26 @@ ol.stops li.done .addr { text-decoration: line-through; }
     $("stage").hidden = true; $("addrInput").value = "";
     toast("Guardada como Nº " + pad(it.num));
     refresh(false);
-    const key = $("keyInput").value.trim();
-    if (key) { try { const g = await geocode(it.address, key); if (g) { it.lat = g.lat; it.lng = g.lng; save(); refresh(true); } } catch {} }
+    try { const g = await geocode(it.address, $("keyInput").value.trim()); if (g) { it.lat = g.lat; it.lng = g.lng; save(); refresh(true); } } catch {}
   });
 
-  // ---------- TomTom ----------
+  // ---------- ubicar direcciones: TomTom con clave, OpenStreetMap (Nominatim) sin clave ----------
+  let lastNominatim = 0;
+  async function geocodeOSM(text) {
+    const wait = 1100 - (Date.now() - lastNominatim); // Nominatim pide máximo 1 consulta por segundo
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    lastNominatim = Date.now();
+    const u = new URL("https://nominatim.openstreetmap.org/search");
+    u.searchParams.set("format", "jsonv2"); u.searchParams.set("limit", "1"); u.searchParams.set("q", text);
+    u.searchParams.set("accept-language", "es");
+    const cc = $("countryInput").value.trim().toLowerCase(); if (/^[a-z]{2}$/.test(cc)) u.searchParams.set("countrycodes", cc);
+    const r = await fetch(u);
+    if (!r.ok) throw new Error("el buscador de OpenStreetMap respondió " + r.status);
+    const j = await r.json();
+    return j && j[0] ? { lat: Number(j[0].lat), lng: Number(j[0].lon) } : null;
+  }
   async function geocode(text, key) {
+    if (!key) return geocodeOSM(text);
     const u = new URL("https://api.tomtom.com/search/2/geocode/" + encodeURIComponent(text) + ".json");
     u.searchParams.set("key", key); u.searchParams.set("limit", "1"); u.searchParams.set("language", "es-ES");
     const cc = $("countryInput").value.trim().toUpperCase(); if (/^[A-Z]{2}$/.test(cc)) u.searchParams.set("countrySet", cc);
@@ -389,7 +403,6 @@ ol.stops li.done .addr { text-decoration: line-through; }
   async function optimize() {
     const st = $("optStatus"); const say = (m, c) => { st.className = "status" + (c ? " " + c : ""); st.textContent = m; };
     const key = $("keyInput").value.trim();
-    if (!key) { say("Falta tu clave de TomTom. Ponla en Ajustes.", "err"); showTab("p-set"); $("keyInput").focus(); return; }
     const todo = items.filter(it => !it.done);
     if (!todo.length) { say("No hay paradas pendientes.", "err"); return; }
     const startText = $("startInput").value.trim();
@@ -406,11 +419,21 @@ ol.stops li.done .addr { text-decoration: line-through; }
       save();
       const located = todo.filter(it => typeof it.lat === "number");
       const missing = todo.length - located.length;
-      if (!located.length) { say("TomTom no encontró ninguna dirección. Revisa que tengan calle, número y ciudad.", "err"); return; }
+      if (!located.length) { say("No se encontró ninguna dirección. Revisa que tengan calle, número y ciudad.", "err"); return; }
       let start;
       if (startText) { say("Ubicando el punto de partida…"); start = await geocode(startText, key); if (!start) { say("No encontré el punto de partida. Escríbelo con calle, número y ciudad.", "err"); return; } }
       else start = { lat: located[0].lat, lng: located[0].lng };
       const back = $("returnChk").checked;
+      if (!key) {
+        say("Calculando la mejor ruta…");
+        const res = await routeOSRM(start, located.slice(0, 99), back);
+        const min = Math.round(res.s / 60);
+        route = { order: res.order, line: res.line, start: startText ? start : null,
+          summary: (res.m / 1000).toFixed(1) + " km · " + (min >= 60 ? Math.floor(min / 60) + " h " + (min % 60) + " min" : min + " min") + (back ? " ida y vuelta" : "") };
+        save(); refresh(true);
+        say(missing ? missing + " dirección(es) no se encontraron en el mapa y quedaron sin ordenar." : (located.length > 99 ? "Se ordenaron las primeras 99 paradas." : "Ruta optimizada."), missing ? "err" : "ok");
+        return;
+      }
       // TomTom reordena las paradas intermedias entre salida y llegada fijas (máx. 150).
       // Sin regreso: se calcula ida y vuelta y se descarta el último tramo.
       const stops = located.slice(0, 148);
@@ -443,6 +466,31 @@ ol.stops li.done .addr { text-decoration: line-through; }
   }
   $("optBtn").addEventListener("click", optimize);
 
+  // Ruta sin clave: servidor público de OSRM (OpenStreetMap). Calcula ida y vuelta desde la salida;
+  // si no hay regreso, se descarta el último tramo.
+  async function routeOSRM(start, stops, back) {
+    const pts = [start, ...stops];
+    const u = "https://router.project-osrm.org/trip/v1/driving/" + pts.map(p => p.lng.toFixed(6) + "," + p.lat.toFixed(6)).join(";") +
+      "?roundtrip=true&source=first&geometries=geojson&overview=full";
+    const r = await fetch(u);
+    if (!r.ok) throw new Error("el servidor de rutas respondió " + r.status + ". Prueba de nuevo en un rato");
+    const j = await r.json();
+    if (j.code !== "Ok" || !j.trips || !j.trips[0]) throw new Error("no se encontró un camino entre las paradas");
+    const trip = j.trips[0];
+    const pos = j.waypoints.map(w => w.waypoint_index); // posición de cada punto dentro del recorrido
+    const order = stops.map((p, i) => ({ num: p.num, at: pos[i + 1] })).sort((a, b) => a.at - b.at).map(x => x.num);
+    let coords = trip.geometry.coordinates.map(c => [c[1], c[0]]);
+    let m = trip.distance, s = trip.duration;
+    if (!back && trip.legs.length) {
+      const last = trip.legs[trip.legs.length - 1]; m -= last.distance; s -= last.duration;
+      const lastStop = stops.find(p => p.num === order[order.length - 1]);
+      const d = (c) => (c[0] - lastStop.lat) ** 2 + (c[1] - lastStop.lng) ** 2;
+      let best = 0; coords.forEach((c, i) => { if (d(c) <= d(coords[best]) + 1e-10) best = i; });
+      coords = coords.slice(0, best + 1);
+    }
+    return { order, line: coords, m, s };
+  }
+
   // ---------- ajustes, exportar ----------
   [["keyInput", "key"], ["geminiInput", "gemini"], ["startInput", "start"], ["countryInput", "country"]].forEach(([id, k]) => {
     $(id).value = store.get(k, "");
@@ -463,7 +511,6 @@ ol.stops li.done .addr { text-decoration: line-through; }
     a.download = "paradas.csv"; document.body.append(a); a.click(); a.remove();
   });
 
-  if (!$("keyInput").value) showTab("p-set");
   refresh(true);
 })();
 </script>
