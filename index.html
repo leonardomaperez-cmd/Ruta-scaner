@@ -72,7 +72,7 @@ body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--body); ov
 .btn:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .row { display: flex; gap: 10px; flex-wrap: wrap; }
 .row > * { flex: 1 1 140px; }
-textarea, input[type=text], input[type=password], input[type=search] { width: 100%; font: 500 1rem/1.4 var(--body); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; min-width: 0; }
+textarea, select, input[type=text], input[type=password], input[type=search] { width: 100%; font: 500 1rem/1.4 var(--body); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; min-width: 0; }
 textarea { resize: vertical; min-height: 70px; }
 .preview { display: grid; grid-template-columns: 84px 1fr; gap: 12px; align-items: start; }
 .preview img { width: 84px; height: 84px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
@@ -198,6 +198,13 @@ ol.stops li.done .addr { text-decoration: line-through; }
       <input id="startInput" type="text" placeholder="Ej.: Depósito, Av. Rivadavia 5000, CABA">
       <label class="check"><input id="returnChk" type="checkbox"> Volver al punto de partida al final</label>
       <label class="check"><input id="zaChk" type="checkbox"> Letras de la Z a la A (la primera parada lleva la última letra)</label>
+      <label class="label" for="mapStyle">Estilo del mapa</label>
+      <select id="mapStyle">
+        <option value="claro">Calles claras (CARTO)</option>
+        <option value="osm">OpenStreetMap clásico</option>
+        <option value="oscuro">Oscuro (CARTO)</option>
+        <option value="satelite">Satélite (Esri)</option>
+      </select>
       <label class="label" for="countryInput">País (código de 2 letras, opcional)</label>
       <input id="countryInput" type="text" maxlength="2" placeholder="Ej.: AR, MX, CL, ES">
       <span class="note">El país ayuda a que el buscador no confunda calles con el mismo nombre en otros países.</span>
@@ -238,9 +245,23 @@ ol.stops li.done .addr { text-decoration: line-through; }
 
   // ---------- mapa ----------
   const map = L.map("map", { zoomControl: true }).setView([-34.6037, -58.3816], 11);
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 19, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-  }).addTo(map);
+  // Fondos de mapa gratuitos (ninguno es de TomTom). Se elige en Ajustes.
+  const OSM = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+  const BASEMAPS = {
+    claro: ["https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", OSM + ' &copy; <a href="https://carto.com/attributions">CARTO</a>', 20],
+    osm: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png", OSM, 19],
+    oscuro: ["https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", OSM + ' &copy; <a href="https://carto.com/attributions">CARTO</a>', 20],
+    satelite: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", "Imágenes &copy; Esri", 19],
+  };
+  let base = null;
+  function setBasemap(name) {
+    const b = BASEMAPS[name] || BASEMAPS.claro;
+    if (base) map.removeLayer(base);
+    base = L.tileLayer(b[0], { maxZoom: b[2], attribution: b[1], subdomains: "abcd" }).addTo(map);
+  }
+  const savedStyle = store.get("mapStyle", "claro");
+  setBasemap(savedStyle); $("mapStyle").value = BASEMAPS[savedStyle] ? savedStyle : "claro";
+  $("mapStyle").addEventListener("change", () => { store.set("mapStyle", $("mapStyle").value); setBasemap($("mapStyle").value); });
   const layer = L.layerGroup().addTo(map);
   const pinIcon = (text, cls) => L.divIcon({ className: "", html: `<div class="pin ${cls || ""}"><span>${text}</span></div>`, iconSize: [32, 32], iconAnchor: [16, 32], popupAnchor: [0, -30] });
   const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
