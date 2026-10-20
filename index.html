@@ -23,13 +23,47 @@
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
-body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--body); display: flex; flex-direction: column; padding-top: env(safe-area-inset-top, 0px); }
-#map { height: 42vh; min-height: 220px; flex: none; background: var(--line); }
-.panel { flex: 1; overflow-y: auto; padding-inline: 16px; padding-block: 12px calc(24px + env(safe-area-inset-bottom, 0px)); }
+body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--body); overflow: hidden; }
+#map { position: fixed; inset: 0; background: var(--line); z-index: 1; }
 .wrap { max-width: 640px; margin: 0 auto; display: grid; gap: 14px; }
-.tabs { display: flex; gap: 6px; position: sticky; top: -12px; background: var(--bg); padding-block: 12px 6px; margin-top: -12px; z-index: 5; }
-.tab { flex: 1; font: 700 1.05rem var(--display); text-transform: uppercase; letter-spacing: .04em; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 10px; padding: 10px 6px; cursor: pointer; }
-.tab[aria-selected="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+/* burbujas flotantes */
+.fabs { position: fixed; left: 0; right: 0; bottom: calc(42px + env(safe-area-inset-bottom, 0px)); z-index: 500; display: flex; justify-content: center; align-items: center; gap: 22px; pointer-events: none; }
+.fab { pointer-events: auto; position: relative; width: 58px; height: 58px; border-radius: 50%; border: 0; background: var(--surface); color: var(--ink); box-shadow: 0 4px 14px rgba(0,0,0,.35); display: grid; place-items: center; cursor: pointer; }
+.fab svg { width: 26px; height: 26px; }
+.fab.big { width: 76px; height: 76px; background: var(--accent); color: var(--accent-ink); }
+.fab.big svg { width: 34px; height: 34px; }
+.fab .cnt { position: absolute; top: -4px; right: -4px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; background: var(--ink); color: var(--bg); font: 700 12px/22px var(--mono); }
+.fab .cnt:empty { display: none; }
+.fab-label { position: absolute; top: calc(100% + 4px); left: 50%; transform: translateX(-50%); font: 700 .7rem var(--display); letter-spacing: .06em; text-transform: uppercase; color: #fff; text-shadow: 0 1px 3px #000; white-space: nowrap; }
+.chip { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: 64px; right: 12px; z-index: 500; display: flex; justify-content: flex-end; pointer-events: none; }
+.chip span { pointer-events: auto; background: var(--surface); color: var(--ink); font: 600 .9rem var(--mono); padding: 6px 12px; border-radius: 18px; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+.chip span:empty { display: none; }
+/* paneles que suben desde abajo */
+.backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 900; }
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 950; max-height: 82vh; overflow-y: auto; background: var(--bg); border-radius: 20px 20px 0 0; padding-inline: 16px; padding-block: 0 calc(24px + env(safe-area-inset-bottom, 0px)); box-shadow: 0 -6px 24px rgba(0,0,0,.35); }
+@media (prefers-reduced-motion: no-preference) { .sheet { animation: up .22s ease-out; } @keyframes up { from { transform: translateY(40px); opacity: .4; } } }
+.sheet-head { position: sticky; top: 0; z-index: 2; background: var(--bg); display: flex; align-items: center; justify-content: space-between; padding-block: 14px 10px; max-width: 640px; margin: 0 auto; }
+.sheet-head::before { content: ""; position: absolute; top: 6px; left: 50%; width: 40px; height: 4px; margin-left: -20px; border-radius: 2px; background: var(--line); }
+.sheet-head h2 { margin: 0; font: 700 1.5rem var(--display); text-transform: uppercase; letter-spacing: .03em; }
+.x { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-size: 1.1rem; cursor: pointer; }
+/* escáner con cámara */
+.scanner { position: fixed; inset: 0; z-index: 1000; background: #000; color: #fff; }
+.scanner video, .scanner .frozen { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.frame { position: absolute; left: 7%; right: 7%; top: 22%; aspect-ratio: 3 / 2; border-radius: 14px; box-shadow: 0 0 0 100vmax rgba(0,0,0,.55); }
+.frame i { position: absolute; width: 34px; height: 34px; border: 4px solid var(--accent); }
+.frame .tl { top: -3px; left: -3px; border-right: 0; border-bottom: 0; border-radius: 14px 0 0 0; }
+.frame .tr { top: -3px; right: -3px; border-left: 0; border-bottom: 0; border-radius: 0 14px 0 0; }
+.frame .bl { bottom: -3px; left: -3px; border-right: 0; border-top: 0; border-radius: 0 0 0 14px; }
+.frame .br { bottom: -3px; right: -3px; border-left: 0; border-top: 0; border-radius: 0 0 14px 0; }
+.scan-top { position: absolute; top: calc(14px + env(safe-area-inset-top, 0px)); left: 16px; right: 16px; display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; }
+.scan-top p { margin: 0; font: 600 1rem var(--body); text-shadow: 0 1px 4px #000; }
+.scan-top .x { background: rgba(0,0,0,.5); color: #fff; border-color: rgba(255,255,255,.4); flex: none; }
+.scan-bottom { position: absolute; left: 0; right: 0; bottom: calc(28px + env(safe-area-inset-bottom, 0px)); display: flex; justify-content: center; align-items: center; gap: 34px; }
+.shutter { width: 78px; height: 78px; border-radius: 50%; border: 5px solid #fff; background: var(--accent); cursor: pointer; }
+.side { width: 56px; height: 56px; border-radius: 50%; border: 0; background: rgba(255,255,255,.18); color: #fff; font: 600 .72rem var(--body); cursor: pointer; display: grid; place-items: center; }
+.side svg { width: 24px; height: 24px; }
+.scan-msg { position: absolute; left: 16px; right: 16px; bottom: calc(130px + env(safe-area-inset-bottom, 0px)); text-align: center; font-weight: 600; text-shadow: 0 1px 4px #000; }
+#stage { position: absolute; left: 0; right: 0; bottom: 0; max-height: 72vh; overflow-y: auto; background: var(--bg); color: var(--ink); border-radius: 20px 20px 0 0; padding-inline: 16px; padding-block: 16px calc(20px + env(safe-area-inset-bottom, 0px)); display: grid; gap: 10px; }
 .label { font-size: .72rem; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); font-weight: 600; }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: grid; gap: 12px; }
 .btn { font: 600 1rem var(--body); border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 12px 16px; cursor: pointer; min-height: 46px; text-align: center; text-decoration: none; display: block; }
@@ -79,41 +113,56 @@ ol.stops li.done .addr { text-decoration: line-through; }
 </head>
 <body>
 <div id="map" role="region" aria-label="Mapa de paradas"></div>
-<div class="panel">
- <div class="wrap">
-  <div class="tabs" role="tablist">
-    <button class="tab" role="tab" id="t-scan" aria-selected="true" data-p="p-scan">Escanear</button>
-    <button class="tab" role="tab" id="t-stops" aria-selected="false" data-p="p-stops">Paradas <span id="countTab"></span></button>
-    <button class="tab" role="tab" id="t-set" aria-selected="false" data-p="p-set">Ajustes</button>
+<div class="chip"><span id="chipSummary"></span></div>
+
+<nav class="fabs" aria-label="Menú">
+  <button class="fab" type="button" data-p="p-stops" aria-label="Paradas">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4" cy="6" r="1.5"/><circle cx="4" cy="12" r="1.5"/><circle cx="4" cy="18" r="1.5"/></svg>
+    <span class="cnt" id="countTab"></span><span class="fab-label">Paradas</span>
+  </button>
+  <button class="fab big" type="button" id="scanBtn" aria-label="Escanear dirección">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M7 10h10M7 14h7"/></svg>
+    <span class="fab-label">Escanear</span>
+  </button>
+  <button class="fab" type="button" data-p="p-set" aria-label="Ajustes">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    <span class="fab-label">Ajustes</span>
+  </button>
+</nav>
+
+<div class="scanner" id="scanner" hidden>
+  <video id="cam" playsinline muted autoplay></video>
+  <img id="frozen" class="frozen" alt="" hidden>
+  <div class="frame" id="frame"><i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i></div>
+  <div class="scan-top"><p id="scanHint">Encuadra la dirección dentro del recuadro y toca el botón</p><button class="x" id="closeScan" type="button" aria-label="Cerrar escáner">✕</button></div>
+  <div class="scan-msg" id="toast" role="status" hidden></div>
+  <div class="scan-bottom" id="scanControls">
+    <button class="side" id="galleryBtn" type="button" aria-label="Elegir foto de la galería"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></button>
+    <button class="shutter" id="shutter" type="button" aria-label="Tomar foto"></button>
+    <button class="side" id="manualBtn" type="button" aria-label="Escribir a mano"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button>
   </div>
-
-  <section id="p-scan" class="wrap">
-    <div class="card">
-      <input id="photo" type="file" accept="image/*" capture="environment" hidden>
-      <input id="gallery" type="file" accept="image/*" hidden>
-      <button id="scanBtn" class="btn btn-primary" type="button">Escanear dirección</button>
-      <div class="row">
-        <button id="galleryBtn" class="btn" type="button">Elegir foto</button>
-        <button id="manualBtn" class="btn" type="button">Escribir a mano</button>
-      </div>
-      <div id="stage" hidden>
-        <div class="preview" id="previewBox" hidden>
-          <img id="previewImg" alt="Foto escaneada">
-          <div class="status" id="scanStatus" role="status"></div>
-        </div>
-        <div class="lines" id="lines" hidden></div>
-        <label class="label" for="addrInput" style="display:block;margin-top:10px">Dirección</label>
-        <textarea id="addrInput" placeholder="Ej.: Av. Corrientes 1234, CABA"></textarea>
-        <div class="assign" style="margin-top:10px">
-          <div class="tag" id="nextTag">0001</div>
-          <button id="saveBtn" class="btn btn-primary" type="button">Guardar</button>
-        </div>
-      </div>
-      <div id="toast" class="status ok" role="status" hidden></div>
+  <input id="photo" type="file" accept="image/*" capture="environment" hidden>
+  <input id="gallery" type="file" accept="image/*" hidden>
+  <div id="stage" hidden>
+    <div class="preview" id="previewBox" hidden>
+      <img id="previewImg" alt="Foto escaneada">
+      <div class="status" id="scanStatus" role="status"></div>
     </div>
-  </section>
+    <div class="lines" id="lines" hidden></div>
+    <label class="label" for="addrInput">Dirección</label>
+    <textarea id="addrInput" placeholder="Ej.: Av. Corrientes 1234, CABA"></textarea>
+    <div class="assign">
+      <div class="tag" id="nextTag">0001</div>
+      <button id="saveBtn" class="btn btn-primary" type="button">Guardar</button>
+    </div>
+    <button id="retakeBtn" class="btn" type="button">Volver a escanear</button>
+  </div>
+</div>
 
-  <section id="p-stops" class="wrap" hidden>
+<div class="backdrop" id="backdrop" hidden></div>
+  <section id="p-stops" class="sheet" hidden aria-label="Paradas">
+   <div class="sheet-head"><h2>Paradas</h2><button class="x" type="button" data-close aria-label="Cerrar">✕</button></div>
+   <div class="wrap">
     <div class="card">
       <button id="optBtn" class="btn btn-primary" type="button">Optimizar ruta</button>
       <div class="status" id="optStatus" role="status"></div>
@@ -125,9 +174,12 @@ ol.stops li.done .addr { text-decoration: line-through; }
       <button id="exportBtn" class="btn" type="button">Exportar CSV</button>
       <button id="clearDone" class="btn" type="button">Quitar entregadas</button>
     </div>
+   </div>
   </section>
 
-  <section id="p-set" class="wrap" hidden>
+  <section id="p-set" class="sheet" hidden aria-label="Ajustes">
+   <div class="sheet-head"><h2>Ajustes</h2><button class="x" type="button" data-close aria-label="Cerrar">✕</button></div>
+   <div class="wrap">
     <div class="card">
       <label class="label" for="keyInput">Clave de TomTom (opcional)</label>
       <input id="keyInput" type="password" autocomplete="off" placeholder="Pega tu clave (API key)">
@@ -143,9 +195,8 @@ ol.stops li.done .addr { text-decoration: line-through; }
       <span class="note">El país ayuda a que TomTom no confunda calles con el mismo nombre en otros países.</span>
     </div>
     <p class="note">Las paradas se guardan en este teléfono. Exporta el CSV si quieres guardarlas aparte.</p>
+   </div>
   </section>
- </div>
-</div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
@@ -167,15 +218,15 @@ ol.stops li.done .addr { text-decoration: line-through; }
   const byNum = (n) => items.find(it => it.num === n);
 
   // ---------- pestañas ----------
+  // ---------- paneles (Paradas, Ajustes) ----------
+  function closeSheets() { document.querySelectorAll(".sheet").forEach(x => x.hidden = true); $("backdrop").hidden = true; }
   function showTab(id) {
-    document.querySelectorAll(".tab").forEach(t => {
-      const on = t.dataset.p === id;
-      t.setAttribute("aria-selected", on);
-      $(t.dataset.p).hidden = !on;
-    });
-    if (id === "p-stops") setTimeout(() => map.invalidateSize(), 50);
+    if (id === "p-scan") { closeSheets(); openScanner(); return; }
+    closeSheets(); $(id).hidden = false; $("backdrop").hidden = false;
   }
-  document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => showTab(t.dataset.p)));
+  document.querySelectorAll(".fab[data-p]").forEach(t => t.addEventListener("click", () => showTab(t.dataset.p)));
+  document.querySelectorAll("[data-close]").forEach(b => b.addEventListener("click", closeSheets));
+  $("backdrop").addEventListener("click", closeSheets);
 
   // ---------- mapa ----------
   const map = L.map("map", { zoomControl: true }).setView([-34.6037, -58.3816], 11);
@@ -218,7 +269,7 @@ ol.stops li.done .addr { text-decoration: line-through; }
   let pendingDelete = null;
   function render() {
     $("nextTag").textContent = pad(nextNum());
-    $("countTab").textContent = items.length ? "(" + items.length + ")" : "";
+    $("countTab").textContent = items.length ? String(items.length) : "";
     const ol = $("stops"); ol.textContent = "";
     const list = orderedItems();
     if (!list.length) {
@@ -235,7 +286,7 @@ ol.stops li.done .addr { text-decoration: line-through; }
       const small = document.createElement("small"); small.textContent = "Nº " + pad(it.num) + (typeof it.lat === "number" ? "" : " · sin ubicar");
       a.append(small, document.createTextNode(it.address));
       a.style.cursor = "pointer";
-      a.addEventListener("click", () => { if (typeof it.lat === "number") { map.setView([it.lat, it.lng], 16); window.scrollTo(0, 0); } });
+      a.addEventListener("click", () => { if (typeof it.lat === "number") { map.setView([it.lat, it.lng], 16); closeSheets(); } });
       const acts = document.createElement("div"); acts.className = "acts";
       const nav = document.createElement("a"); nav.className = "mini"; nav.textContent = "Ir"; nav.href = gmaps(it); nav.target = "_blank"; nav.rel = "noopener";
       const done = document.createElement("button"); done.className = "mini"; done.type = "button"; done.textContent = it.done ? "Deshacer" : "Entregada";
@@ -252,6 +303,8 @@ ol.stops li.done .addr { text-decoration: line-through; }
       li.append(b, a, acts); ol.append(li);
     });
     if (route && route.summary) { $("summary").textContent = route.summary; $("summary").hidden = false; } else $("summary").hidden = true;
+    const left = list.filter(it => !it.done).length;
+    $("chipSummary").textContent = route && route.summary ? route.summary + (left ? " · faltan " + left : " · todo entregado") : "";
     const pending = list.filter(it => !it.done).slice(0, 10);
     if (pending.length) {
       const u = new URL("https://www.google.com/maps/dir/");
@@ -355,12 +408,51 @@ ol.stops li.done .addr { text-decoration: line-through; }
     } finally { $("saveBtn").disabled = false; }
   }
 
-  $("scanBtn").addEventListener("click", () => $("photo").click());
+  // ---------- escáner con cámara y recuadro ----------
+  let stream = null;
+  async function openScanner() {
+    $("scanner").hidden = false; $("stage").hidden = true; $("frozen").hidden = true; $("scanControls").hidden = false;
+    $("scanHint").textContent = "Encuadra la dirección dentro del recuadro y toca el botón";
+    try {
+      if (!stream) stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+      $("cam").srcObject = stream; await $("cam").play().catch(() => {});
+    } catch (e) {
+      stream = null;
+      $("scanHint").textContent = "No se pudo abrir la cámara aquí. Toca el botón amarillo para sacar la foto con la cámara del teléfono.";
+    }
+  }
+  function stopCam() { if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } $("cam").srcObject = null; }
+  function closeScanner() { stopCam(); $("scanner").hidden = true; refresh(true); }
+  function resumeScan() { $("stage").hidden = true; $("frozen").hidden = true; $("scanControls").hidden = false; if (!stream) openScanner(); }
+  // Recorta de la imagen de la cámara solo lo que se ve dentro del recuadro (con un margen).
+  function grabFrame() {
+    const v = $("cam"), vw = v.videoWidth, vh = v.videoHeight;
+    if (!vw || !vh) return null;
+    const er = v.getBoundingClientRect(), fr = $("frame").getBoundingClientRect();
+    const sc = Math.max(er.width / vw, er.height / vh), ox = (er.width - vw * sc) / 2, oy = (er.height - vh * sc) / 2;
+    const mx = fr.width * 0.08, my = fr.height * 0.12;
+    let x = (fr.left - er.left - mx - ox) / sc, y = (fr.top - er.top - my - oy) / sc;
+    let w = (fr.width + 2 * mx) / sc, h = (fr.height + 2 * my) / sc;
+    x = Math.max(0, x); y = Math.max(0, y); w = Math.min(vw - x, w); h = Math.min(vh - y, h);
+    const c = document.createElement("canvas"); c.width = Math.round(w); c.height = Math.round(h);
+    c.getContext("2d").drawImage(v, x, y, w, h, 0, 0, c.width, c.height);
+    return c;
+  }
+  $("scanBtn").addEventListener("click", () => showTab("p-scan"));
+  $("closeScan").addEventListener("click", closeScanner);
+  $("retakeBtn").addEventListener("click", resumeScan);
+  $("shutter").addEventListener("click", () => {
+    const c = stream && grabFrame();
+    if (!c) { $("photo").click(); return; }
+    $("frozen").src = c.toDataURL("image/jpeg", 0.9); $("frozen").hidden = false;
+    c.toBlob(b => { if (b) { $("scanControls").hidden = true; onPhoto(b); } }, "image/jpeg", 0.92);
+  });
   $("galleryBtn").addEventListener("click", () => $("gallery").click());
   ["photo", "gallery"].forEach(id => $(id).addEventListener("change", e => { const f = e.target.files[0]; if (f) onPhoto(f); e.target.value = ""; }));
-  $("manualBtn").addEventListener("click", () => { $("stage").hidden = false; $("previewBox").hidden = true; $("lines").hidden = true; $("addrInput").focus(); });
+  $("manualBtn").addEventListener("click", () => { $("stage").hidden = false; $("scanControls").hidden = true; $("previewBox").hidden = true; $("lines").hidden = true; $("addrInput").focus(); });
+  ["photo", "gallery"].forEach(id => $(id).addEventListener("change", () => { $("scanControls").hidden = true; }));
 
-  function toast(m, bad) { const t = $("toast"); t.textContent = m; t.className = "status " + (bad ? "err" : "ok"); t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 3500); }
+  function toast(m, bad) { const t = $("toast"); t.textContent = m; t.className = "scan-msg"; t.style.color = bad ? "#ff8a80" : "#9ff0c4"; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 3500); }
 
   $("saveBtn").addEventListener("click", async () => {
     const address = $("addrInput").value.replace(/\s+/g, " ").trim();
@@ -482,6 +574,8 @@ ol.stops li.done .addr { text-decoration: line-through; }
     } finally { $("optBtn").disabled = false; }
   }
   $("optBtn").addEventListener("click", optimize);
+  // Después de guardar, la cámara queda lista para la siguiente etiqueta.
+  $("saveBtn").addEventListener("click", () => { if ($("stage").hidden) resumeScan(); });
 
   // Ruta sin clave, opción 1: optimizador público de Valhalla (FOSSGIS). Fija la primera y la última
   // parada; se manda ida y vuelta a la salida y, si no hay regreso, se descarta el último tramo.
