@@ -23,11 +23,11 @@ type ValhallaResponse = {
 export async function optimizeWithValhalla(depot: Point, stops: Stop[]): Promise<{ ordered: Stop[]; shape: LatLngTuple[] }> {
   // Valhalla deja fijos el primero y el último: depósito → paradas → depósito
   const locations = [depot, ...stops, depot].map(p => ({ lat: p.lat, lon: p.lon }));
-  const res = await fetch("https://valhalla1.openstreetmap.de/optimized_route", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ locations, costing: "auto", directions_type: "none" }),
-  });
+  const url = "https://valhalla1.openstreetmap.de/optimized_route";
+  const body = JSON.stringify({ locations, costing: "auto", directions_type: "none" });
+  // si el navegador bloquea el POST (CORS), Valhalla acepta lo mismo por GET
+  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body })
+    .catch(() => fetch(url + "?json=" + encodeURIComponent(body)));
   const data: ValhallaResponse = await res.json();
   if (!res.ok || !data.trip) throw new Error(data.error || `Valhalla respondió ${res.status}`);
 
