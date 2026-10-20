@@ -92,6 +92,12 @@ ol.stops li:first-child { border-top: 0; }
 ol.stops li.done { opacity: .55; }
 ol.stops li.done .addr { text-decoration: line-through; }
 .badge { display: grid; place-items: center; min-width: 2.2em; height: 2.2em; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font: 700 .95rem var(--mono); border: 2px solid var(--ink); }
+.ord { display: flex; gap: 4px; align-items: center; }
+.letter { display: grid; place-items: center; min-width: 2em; height: 2.2em; padding: 0 4px; border-radius: 8px; background: var(--ink); color: var(--bg); font: 700 .95rem var(--mono); }
+.verify { text-align: center; padding: 14px; border: 2px solid var(--ink); border-radius: 14px; }
+.verify b { display: block; font: 700 2.6rem/1.1 var(--mono); }
+.verify span { color: var(--muted); }
+#stage.is-verify .newonly { display: none !important; }
 .badge.none { background: var(--bg); color: var(--muted); border-color: var(--line); }
 .addr { min-width: 0; overflow-wrap: anywhere; }
 .addr small { display: block; color: var(--muted); font: 500 .8rem var(--mono); }
@@ -149,12 +155,13 @@ ol.stops li.done .addr { text-decoration: line-through; }
       <img id="previewImg" alt="Foto escaneada">
       <div class="status" id="scanStatus" role="status"></div>
     </div>
-    <div class="lines" id="lines" hidden></div>
-    <label class="label" for="addrInput">Dirección</label>
-    <textarea id="addrInput" placeholder="Ej.: Av. Corrientes 1234, CABA"></textarea>
-    <label class="label" for="refInput">Referencia (opcional)</label>
-    <input id="refInput" type="text" placeholder="Ej.: portón negro, timbre 2">
-    <div class="assign">
+    <div class="verify" id="verifyBox" hidden><span>Código de verificación</span><b id="verifyCode"></b><span id="verifyInfo"></span></div>
+    <div class="lines newonly" id="lines" hidden></div>
+    <label class="label newonly" for="addrInput">Dirección</label>
+    <textarea class="newonly" id="addrInput" placeholder="Ej.: Av. Corrientes 1234, CABA"></textarea>
+    <label class="label newonly" for="refInput">Referencia (opcional)</label>
+    <input class="newonly" id="refInput" type="text" placeholder="Ej.: portón negro, timbre 2">
+    <div class="assign newonly">
       <div class="tag" id="nextTag">0001</div>
       <button id="saveBtn" class="btn btn-primary" type="button">Guardar</button>
     </div>
@@ -193,6 +200,7 @@ ol.stops li.done .addr { text-decoration: line-through; }
       <label class="label" for="startInput">Punto de partida</label>
       <input id="startInput" type="text" placeholder="Ej.: Depósito, Av. Rivadavia 5000, CABA">
       <label class="check"><input id="returnChk" type="checkbox"> Volver al punto de partida al final</label>
+      <label class="check"><input id="zaChk" type="checkbox"> Letras de la Z a la A (la primera parada lleva la última letra)</label>
       <label class="label" for="countryInput">País (código de 2 letras, opcional)</label>
       <input id="countryInput" type="text" maxlength="2" placeholder="Ej.: AR, MX, CL, ES">
       <span class="note">El país ayuda a que TomTom no confunda calles con el mismo nombre en otros países.</span>
@@ -249,6 +257,25 @@ ol.stops li.done .addr { text-decoration: line-through; }
     return [...inRoute, ...rest];
   }
 
+  // Letra de cada parada según el orden de la ruta (A, B… Z, AA, AB…). Paquetes a la misma dirección comparten letra.
+  const abc = (i) => { let s = ""; i++; while (i > 0) { const r = (i - 1) % 26; s = String.fromCharCode(65 + r) + s; i = Math.floor((i - 1) / 26); } return s; };
+  const addrKey = (it) => it.address.toLowerCase().replace(/[^a-z0-9áéíóúñ]+/g, " ").trim();
+  const geoKey = (it) => typeof it.lat === "number" ? it.lat.toFixed(4) + "," + it.lng.toFixed(4) : "";
+  function letters() {
+    const out = new Map(); if (!route) return out;
+    const groups = []; // cada grupo: misma dirección escrita o mismo punto en el mapa
+    const stops = route.order.map(byNum).filter(Boolean);
+    const gi = stops.map(it => {
+      let i = groups.findIndex(g => g.a.has(addrKey(it)) || (geoKey(it) && g.g.has(geoKey(it))));
+      if (i < 0) { groups.push({ a: new Set(), g: new Set() }); i = groups.length - 1; }
+      groups[i].a.add(addrKey(it)); if (geoKey(it)) groups[i].g.add(geoKey(it));
+      return i;
+    });
+    const za = $("zaChk") && $("zaChk").checked;
+    stops.forEach((it, k) => out.set(it.num, abc(za ? groups.length - 1 - gi[k] : gi[k])));
+    return out;
+  }
+
   function drawMap(fit) {
     layer.clearLayers();
     const pts = [];
@@ -257,11 +284,12 @@ ol.stops li.done .addr { text-decoration: line-through; }
       L.marker([route.start.lat, route.start.lng], { icon: pinIcon("S", "start") }).bindPopup("<b>Salida</b>").addTo(layer);
       pts.push([route.start.lat, route.start.lng]);
     }
+    const lt = letters();
     orderedItems().forEach((it) => {
       if (typeof it.lat !== "number") return;
       const stop = route ? route.order.indexOf(it.num) + 1 : 0;
-      const m = L.marker([it.lat, it.lng], { icon: pinIcon(stop || it.num, it.done ? "done" : (stop ? "" : "unordered")) });
-      m.bindPopup(`<b>${stop ? "Parada " + stop + " · " : ""}Nº ${pad(it.num)}</b><br>${esc(it.address)}${it.ref ? "<br><i>" + esc(it.ref) + "</i>" : ""}<br><a href="${gmaps(it)}" target="_blank" rel="noopener">Navegar aquí</a>`);
+      const m = L.marker([it.lat, it.lng], { icon: pinIcon(stop ? stop + (lt.get(it.num) || "") : it.num, it.done ? "done" : (stop ? "" : "unordered")) });
+      m.bindPopup(`<b>${stop ? "Parada " + stop + " · " + (lt.get(it.num) || "") + " · " : ""}Nº ${pad(it.num)}</b><br>${esc(it.address)}${it.ref ? "<br><i>" + esc(it.ref) + "</i>" : ""}<br><a href="${gmaps(it)}" target="_blank" rel="noopener">Navegar aquí</a>`);
       m.addTo(layer);
       pts.push([it.lat, it.lng]);
     });
@@ -274,7 +302,7 @@ ol.stops li.done .addr { text-decoration: line-through; }
     $("nextTag").textContent = pad(nextNum());
     $("countTab").textContent = items.length ? String(items.length) : "";
     const ol = $("stops"); ol.textContent = "";
-    const list = orderedItems();
+    const list = orderedItems(); const lt = letters();
     if (!list.length) {
       const li = document.createElement("li"); li.className = "empty";
       li.textContent = "Todavía no hay paradas. Escanea una etiqueta y la primera quedará como Nº 0001.";
@@ -285,6 +313,8 @@ ol.stops li.done .addr { text-decoration: line-through; }
       const li = document.createElement("li"); if (it.done) li.className = "done";
       const b = document.createElement("span"); b.className = "badge" + (stop ? "" : " none"); b.textContent = stop || "–";
       b.title = stop ? "Orden en la ruta" : "Sin ordenar";
+      const ord = document.createElement("div"); ord.className = "ord"; ord.append(b);
+      if (lt.get(it.num)) { const l = document.createElement("span"); l.className = "letter"; l.title = "Código de verificación"; l.textContent = lt.get(it.num); ord.append(l); }
       const a = document.createElement("div"); a.className = "addr";
       const small = document.createElement("small"); small.textContent = "Nº " + pad(it.num) + (typeof it.lat === "number" ? "" : " · sin ubicar");
       a.append(small, document.createTextNode(it.address));
@@ -304,7 +334,7 @@ ol.stops li.done .addr { text-decoration: line-through; }
         save(); refresh(false);
       });
       acts.append(nav, done, del);
-      li.append(b, a, acts); ol.append(li);
+      li.append(ord, a, acts); ol.append(li);
     });
     if (route && route.summary) { $("summary").textContent = route.summary; $("summary").hidden = false; } else $("summary").hidden = true;
     const left = list.filter(it => !it.done).length;
@@ -429,12 +459,50 @@ ol.stops li.done .addr { text-decoration: line-through; }
     throw new Error(last || "Gemini no respondió");
   }
 
+  // QR de la etiqueta (Mercado Libre Flex trae un JSON con "id" del envío). Sirve para reconocer un paquete ya guardado.
+  let jsQRp = null;
+  const loadJsQR = () => jsQRp || (jsQRp = new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"; sc.onload = () => res(window.jsQR); sc.onerror = () => { jsQRp = null; rej(new Error("jsQR")); }; document.head.append(sc); }));
+  async function readQR(src) {
+    try {
+      const bmp = src instanceof HTMLCanvasElement ? src : await createImageBitmap(src);
+      let raw = "";
+      if ("BarcodeDetector" in window) {
+        try { const r = await new BarcodeDetector({ formats: ["qr_code"] }).detect(bmp); if (r[0]) raw = r[0].rawValue; } catch {}
+      }
+      if (!raw) {
+        const jsQR = await loadJsQR();
+        const k = Math.min(1, 1200 / Math.max(bmp.width, bmp.height));
+        const c = document.createElement("canvas"); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+        const g = c.getContext("2d"); g.drawImage(bmp, 0, 0, c.width, c.height);
+        const r = jsQR(g.getImageData(0, 0, c.width, c.height).data, c.width, c.height);
+        if (r) raw = r.data;
+      }
+      raw = String(raw || "").trim(); if (!raw) return "";
+      try { const o = JSON.parse(raw); if (o && o.id != null) return String(o.id); } catch {}
+      return raw;
+    } catch { return ""; }
+  }
+  function showVerify(it) {
+    const stop = route ? route.order.indexOf(it.num) + 1 : 0;
+    const l = letters().get(it.num);
+    $("stage").classList.add("is-verify"); $("verifyBox").hidden = false;
+    $("verifyCode").textContent = stop ? stop + " · " + l : "Nº " + pad(it.num);
+    $("verifyInfo").textContent = (stop ? "Parada " + stop + ", letra " + l + " · Nº " + pad(it.num) : "Ya guardado. Optimiza la ruta para ver su parada y letra.") + " · " + it.address;
+  }
+  let pendingQR = "";
   let lastRead = ""; // lo que leyó el escáner, para aprender si el usuario lo corrige
-  async function onPhoto(file) {
+  async function onPhoto(file, qrSrc) {
+    $("stage").classList.remove("is-verify"); $("verifyBox").hidden = true; pendingQR = "";
     $("stage").hidden = false; $("previewBox").hidden = false; $("lines").hidden = true;
     $("previewImg").src = URL.createObjectURL(file); $("addrInput").value = ""; $("refInput").value = ""; lastRead = "";
     const st = $("scanStatus"); const say = (m, c) => { st.className = "status" + (c ? " " + c : ""); st.textContent = m; };
     say("Preparando la foto…"); $("saveBtn").disabled = true;
+    const qr = await readQR(qrSrc || file);
+    if (qr) {
+      const known = items.find(it => it.qr === qr);
+      if (known) { showVerify(known); say("Este paquete ya está en la lista.", "ok"); $("saveBtn").disabled = false; return; }
+      pendingQR = qr;
+    }
     const gkey = $("geminiInput").value.trim();
     if (gkey) {
       try {
@@ -492,12 +560,13 @@ ol.stops li.done .addr { text-decoration: line-through; }
   $("shutter").addEventListener("click", () => {
     const c = stream && grabFrame();
     if (!c) { $("photo").click(); return; }
+    const v = $("cam"), full = document.createElement("canvas"); full.width = v.videoWidth; full.height = v.videoHeight; full.getContext("2d").drawImage(v, 0, 0);
     $("frozen").src = c.toDataURL("image/jpeg", 0.9); $("frozen").hidden = false;
-    c.toBlob(b => { if (b) { $("scanControls").hidden = true; onPhoto(b); } }, "image/jpeg", 0.92);
+    c.toBlob(b => { if (b) { $("scanControls").hidden = true; onPhoto(b, full); } }, "image/jpeg", 0.92);
   });
   $("galleryBtn").addEventListener("click", () => $("gallery").click());
   ["photo", "gallery"].forEach(id => $(id).addEventListener("change", e => { const f = e.target.files[0]; if (f) onPhoto(f); e.target.value = ""; }));
-  $("manualBtn").addEventListener("click", () => { lastRead = ""; $("refInput").value = ""; $("stage").hidden = false; $("scanControls").hidden = true; $("previewBox").hidden = true; $("lines").hidden = true; $("addrInput").focus(); });
+  $("manualBtn").addEventListener("click", () => { lastRead = ""; pendingQR = ""; $("stage").classList.remove("is-verify"); $("verifyBox").hidden = true; $("refInput").value = ""; $("stage").hidden = false; $("scanControls").hidden = true; $("previewBox").hidden = true; $("lines").hidden = true; $("addrInput").focus(); });
   ["photo", "gallery"].forEach(id => $(id).addEventListener("change", () => { $("scanControls").hidden = true; }));
 
   function toast(m, bad) { const t = $("toast"); t.textContent = m; t.className = "scan-msg"; t.style.color = bad ? "#ff8a80" : "#9ff0c4"; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 3500); }
@@ -508,6 +577,7 @@ ol.stops li.done .addr { text-decoration: line-through; }
     const it = { num: nextNum(), address, createdAt: new Date().toISOString() };
     const ref = $("refInput").value.replace(/\s+/g, " ").trim(); if (ref) it.ref = ref;
     rememberFix(lastRead.replace(/\s+/g, " "), address); lastRead = "";
+    if (pendingQR) { it.qr = pendingQR; pendingQR = ""; }
     items.push(it); save();
     $("stage").hidden = true; $("addrInput").value = ""; $("refInput").value = "";
     toast("Guardada como Nº " + pad(it.num));
@@ -720,6 +790,8 @@ ol.stops li.done .addr { text-decoration: line-through; }
   if (store.get("country", null) === null) { $("countryInput").value = "AR"; store.set("country", "AR"); }
   $("returnChk").checked = store.get("back", false);
   $("returnChk").addEventListener("change", () => store.set("back", $("returnChk").checked));
+  $("zaChk").checked = store.get("za", true);
+  $("zaChk").addEventListener("change", () => { store.set("za", $("zaChk").checked); refresh(false); });
 
   $("clearDone").addEventListener("click", () => {
     const n = items.filter(i => i.done).length; if (!n) { return; }
@@ -727,8 +799,9 @@ ol.stops li.done .addr { text-decoration: line-through; }
   });
   $("exportBtn").addEventListener("click", () => {
     const q = (s) => '"' + String(s).replace(/"/g, '""') + '"';
-    const rows = orderedItems().map(it => [route ? (route.order.indexOf(it.num) + 1 || "") : "", pad(it.num), q(it.address), q(it.ref || ""), it.lat ?? "", it.lng ?? "", it.done ? "si" : "no"].join(","));
-    const csv = "﻿parada,numero,direccion,referencia,lat,lng,entregada\n" + rows.join("\n") + "\n";
+    const lt = letters();
+    const rows = orderedItems().map(it => [route ? (route.order.indexOf(it.num) + 1 || "") : "", lt.get(it.num) || "", pad(it.num), q(it.address), q(it.ref || ""), it.lat ?? "", it.lng ?? "", it.done ? "si" : "no"].join(","));
+    const csv = "﻿parada,letra,numero,direccion,referencia,lat,lng,entregada\n" + rows.join("\n") + "\n";
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
     a.download = "paradas.csv"; document.body.append(a); a.click(); a.remove();
   });
