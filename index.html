@@ -435,8 +435,12 @@ ol.stops li.done .addr { text-decoration: line-through; }
       if (!key) {
         say("Calculando la mejor ruta…");
         let res, note = "";
-        try { res = await routeOSRM(start, located.slice(0, 99), back); }
-        catch (e) { res = await routeLocal(start, located.slice(0, 99), back); note = " (orden aproximado: " + (e.message || e) + ")"; }
+        const few = located.slice(0, 99);
+        try { res = await routeValhalla(start, few, back); }
+        catch (e1) {
+          try { res = await routeOSRM(start, few, back); }
+          catch (e2) { res = await routeLocal(start, few, back); note = " (orden aproximado: " + (e1.message || e1) + " / " + (e2.message || e2) + ")"; }
+        }
         const min = Math.round(res.s / 60);
         route = { order: res.order, line: res.line, start: startText ? start : null,
           summary: (res.m / 1000).toFixed(1) + " km · " + (min >= 60 ? Math.floor(min / 60) + " h " + (min % 60) + " min" : min + " min") + (back ? " ida y vuelta" : "") };
@@ -479,7 +483,37 @@ ol.stops li.done .addr { text-decoration: line-through; }
   }
   $("optBtn").addEventListener("click", optimize);
 
-  // Ruta sin clave: servidor público de OSRM (OpenStreetMap). Calcula ida y vuelta desde la salida;
+  // Ruta sin clave, opción 1: optimizador público de Valhalla (FOSSGIS). Fija la primera y la última
+  // parada; se manda ida y vuelta a la salida y, si no hay regreso, se descarta el último tramo.
+  function decodePolyline6(str) {
+    const out = []; let i = 0, lat = 0, lng = 0;
+    while (i < str.length) {
+      for (const k of [0, 1]) {
+        let b, shift = 0, res = 0;
+        do { b = str.charCodeAt(i++) - 63; res |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+        const d = (res & 1) ? ~(res >> 1) : (res >> 1);
+        if (k === 0) lat += d; else lng += d;
+      }
+      out.push([lat / 1e6, lng / 1e6]);
+    }
+    return out;
+  }
+  async function routeValhalla(start, stops, back) {
+    if (stops.length < 2) throw new Error("Valhalla necesita al menos 2 paradas");
+    const locs = [start, ...stops, start].map(p => ({ lat: +p.lat.toFixed(6), lon: +p.lng.toFixed(6) }));
+    const q = { locations: locs, costing: "auto", units: "kilometers", directions_options: { language: "es-ES" }, directions_type: "none" };
+    const r = await fetch("https://valhalla1.openstreetmap.de/optimized_route?json=" + encodeURIComponent(JSON.stringify(q)));
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.trip) throw new Error("Valhalla " + r.status + (j.error ? ": " + j.error : ""));
+    const t = j.trip;
+    const order = t.locations.slice(1, -1).map(l => stops[l.original_index - 1]).filter(Boolean).map(p => p.num);
+    const legs = back ? t.legs : t.legs.slice(0, -1);
+    let m = 0, s = 0; const line = [];
+    legs.forEach(l => { m += (l.summary.length || 0) * 1000; s += l.summary.time || 0; decodePolyline6(l.shape || "").forEach(c => line.push(c)); });
+    return { order, line, m, s };
+  }
+
+  // Ruta sin clave, opción 2: servidor público de OSRM (OpenStreetMap). Calcula ida y vuelta desde la salida;
   // si no hay regreso, se descarta el último tramo.
   async function routeOSRM(start, stops, back) {
     const pts = [start, ...stops];
