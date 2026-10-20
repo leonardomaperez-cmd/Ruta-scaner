@@ -279,7 +279,18 @@ ol.stops li.done .addr { text-decoration: line-through; }
   function drawMap(fit) {
     layer.clearLayers();
     const pts = [];
-    if (route && route.line && route.line.length) L.polyline(route.line, { color: "#16202b", weight: 5, opacity: .75 }).addTo(layer);
+    // Línea que une las paradas: por las calles si la ruta trajo el trazado; si no, recta y punteada en el orden de la ruta
+    // (o por número si todavía no se optimizó).
+    const chain = [];
+    if (route && route.start) chain.push([route.start.lat, route.start.lng]);
+    (route ? route.order.map(byNum).filter(Boolean) : items.slice().sort((a, b) => a.num - b.num))
+      .forEach(it => { if (typeof it.lat === "number") chain.push([it.lat, it.lng]); });
+    const street = route && route.line && route.line.length > 1;
+    const path = street ? route.line : chain;
+    if (path.length > 1) {
+      L.polyline(path, { color: "#ffffff", weight: street ? 9 : 6, opacity: .9 }).addTo(layer);
+      L.polyline(path, { color: route ? "#1a73e8" : "#5b6774", weight: street ? 5 : 3, opacity: .95, dashArray: street ? null : "8 8" }).addTo(layer);
+    }
     if (route && route.start) {
       L.marker([route.start.lat, route.start.lng], { icon: pinIcon("S", "start") }).bindPopup("<b>Salida</b>").addTo(layer);
       pts.push([route.start.lat, route.start.lng]);
@@ -688,6 +699,14 @@ ol.stops li.done .addr { text-decoration: line-through; }
         catch (e1) {
           try { res = await routeOSRM(start, few, back); }
           catch (e2) { res = await routeLocal(start, few, back); note = " (orden aproximado: " + (e1.message || e1) + " / " + (e2.message || e2) + ")"; }
+        }
+        if (!res.line || res.line.length < 2) {
+          try {
+            const pts = [start, ...res.order.map(byNum), ...(back ? [start] : [])];
+            const u = "https://router.project-osrm.org/route/v1/driving/" + pts.map(p => p.lng.toFixed(6) + "," + p.lat.toFixed(6)).join(";") + "?geometries=geojson&overview=full";
+            const r = await fetch(u); const j = await r.json();
+            if (r.ok && j.code === "Ok" && j.routes && j.routes[0]) res.line = j.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+          } catch {}
         }
         const min = Math.round(res.s / 60);
         route = { order: res.order, line: res.line, start: startText ? start : null,
