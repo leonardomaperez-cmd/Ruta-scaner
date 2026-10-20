@@ -102,7 +102,7 @@ ol.stops li.done .addr { text-decoration: line-through; }
 .addr { min-width: 0; overflow-wrap: anywhere; }
 .addr small { display: block; color: var(--muted); font: 500 .8rem var(--mono); }
 .addr small.ref { font: italic 500 .85rem var(--body); margin-top: 2px; }
-.acts { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.acts { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; max-width: 9.5rem; }
 .mini { background: none; border: 1px solid var(--line); color: var(--ink); font: 500 .8rem var(--body); border-radius: 8px; padding: 6px 8px; cursor: pointer; text-decoration: none; }
 .mini.confirm { color: var(--bad); border-color: var(--bad); font-weight: 600; }
 .empty { padding: 20px 14px; text-align: center; color: var(--muted); display: block !important; }
@@ -333,7 +333,14 @@ ol.stops li.done .addr { text-decoration: line-through; }
         if (route) route.order = route.order.filter(n => n !== it.num);
         save(); refresh(false);
       });
-      acts.append(nav, done, del);
+      const ed = document.createElement("button"); ed.type = "button"; ed.className = "mini"; ed.textContent = "Editar";
+      ed.addEventListener("click", async () => {
+        const v = prompt("Dirección del Nº " + pad(it.num), it.address); if (v == null) return;
+        const nv = v.replace(/\s+/g, " ").trim(); if (!nv || nv === it.address) return;
+        it.address = nv; delete it.lat; delete it.lng; save(); refresh(false);
+        try { const g = await geocode(nv, $("keyInput").value.trim()); if (g) { it.lat = g.lat; it.lng = g.lng; save(); refresh(true); } } catch {}
+      });
+      acts.append(nav, ed, done, del);
       li.append(ord, a, acts); ol.append(li);
     });
     if (route && route.summary) { $("summary").textContent = route.summary; $("summary").hidden = false; } else $("summary").hidden = true;
@@ -373,29 +380,56 @@ ol.stops li.done .addr { text-decoration: line-through; }
   // Marca de entrada las líneas que parecen dirección: tienen número y palabras de calle o código postal.
   const looksAddress = (l) => /\d/.test(l) && (/\b(av|avda|avenida|calle|c\/|pje|pasaje|ruta|km|blvd|bv|boulevard|diag|piso|dpto|depto|cp|col|colonia|barrio|n[º°o]\.?)\b/i.test(l) || /\b[A-Z]?\d{4,5}[A-Z]{0,3}\b/.test(l) || /^[A-ZÁÉÍÓÚÑa-záéíóúñ.' ]+ \d{1,5}\b/.test(l));
 
-  // Etiquetas Mercado Libre Flex: la dirección está en «Direccion:», «Barrio:» y «CP:»; lo de arriba es del vendedor.
-  const flexLine = (l) => /^(direcci[oó]n|barrio|cp)\s*[:.]/i.test(l);
-  // «PARTIDO / LOCALIDAD» → «Localidad, Partido» (una sola vez si son iguales)
+  // Etiquetas Mercado Libre Flex: la dirección está abajo en «Direccion:», «Barrio:» y en «CP:» con «PARTIDO / LOCALIDAD»;
+  // lo de arriba es del vendedor. El texto leído en el teléfono suele venir con letras cambiadas («bireccion»), por eso
+  // las búsquedas son tolerantes.
+  const DIR_RE = /(?:^|[\s:;,.])[a-z]{0,2}[il1|]?recc?i[oó0]n\s*[:.;]\s*/i;
+  const BAR_RE = /^\W*[bh8]arr?[il1]o\s*[:.;]?\s*/i;
+  const REF_RE = /^\W*r[eo]f[eo]renc[il1]a\s*[:.;]?\s*/i;
+  const STOP_RE = /^\W*(destinatar|r[eo]f[eo]renc|[bh8]arr?[il1]o\b|c\s*p\s*[:.;])/i;
+  const CP_RE = /^\W*c\s*p\s*[:.;]\s*(\d{4})/i;
+  const SELLER_RE = /pack\s*id|env[ií]o\s*[:.;]|\bsku\b|unidades/i;
   const title = (t) => t.toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase());
-  const clean = (l) => {
-    const pl = l.match(/^([^/\d]{3,})\/([^/\d]{3,})$/);
-    if (pl) { const a = title(pl[1].trim()), b = title(pl[2].trim()); return a === b ? a : b + ", " + a; }
-    return l.replace(/^(direcci[oó]n|barrio)\s*[:.]\s*/i, "").replace(/^cp\s*[:.]\s*/i, "CP ").trim();
-  };
-  // Orden de la dirección Flex: calle, barrio, localidad/partido, CP.
-  const flexRank = (l) => /^direcci/i.test(l) ? 0 : /^barrio/i.test(l) ? 1 : /^cp/i.test(l) ? 3 : 2;
+  const tidy = (t) => t.replace(/[^\wÁÉÍÓÚÑáéíóúñü°º.,/ -]+/g, " ").replace(/\s+/g, " ").replace(/^[\s,.-]+|[\s,.-]+$/g, "");
+  // «PARTIDO / LOCALIDAD» → «Localidad, Partido» (una sola vez si son iguales)
+  const partido = (l) => { const m = l.match(/^([^/\d]{3,})\/([^/\d]{3,})$/); if (!m) return ""; const a = title(tidy(m[1])), b = title(tidy(m[2])); return a === b ? a : b + ", " + a; };
+  function clean(l) {
+    const d = l.match(DIR_RE); if (d) return tidy(l.slice(d.index + d[0].length));
+    const c = l.match(CP_RE); if (c) return "CP " + c[1];
+    if (BAR_RE.test(l)) return tidy(l.replace(BAR_RE, ""));
+    return partido(l) || tidy(l);
+  }
+  // Devuelve {sel: índices a marcar, rank: orden de cada índice} o null si no parece etiqueta Flex.
+  function flexPick(lines) {
+    const flex = lines.some(l => DIR_RE.test(l)) || lines.some(l => /pack\s*id|\bflex\b/i.test(l));
+    if (!flex) return null;
+    const sel = [], rank = new Map(), add = (i, r) => { if (clean(lines[i])) { sel.push(i); rank.set(i, r); } };
+    let d = -1; lines.forEach((l, i) => { if (DIR_RE.test(l)) d = i; });
+    if (d >= 0) {
+      add(d, 0);
+      // si la calle quedó partida en dos líneas, suma la siguiente
+      const nx = lines[d + 1];
+      if (nx && !STOP_RE.test(nx) && !SELLER_RE.test(nx) && (/[a-záéíóúñ]{3}/i.test(nx) || /^\W*\d{1,5}\b/.test(nx)) && nx.length < 40) add(d + 1, 0.5);
+      const b = lines.findIndex((l, i) => i > d && BAR_RE.test(l)); if (b >= 0) add(b, 1);
+    }
+    let cp = -1; lines.forEach((l, i) => { if (CP_RE.test(l)) cp = i; });
+    if (cp >= 0) { add(cp, 3); if (lines[cp + 1] && partido(lines[cp + 1])) add(cp + 1, 2); }
+    return { sel: d >= 0 ? sel : [], rank, found: d >= 0 };
+  }
   function setLines(lines) {
     const box = $("lines"); box.textContent = "";
     if (!lines.length) { box.hidden = true; return; }
-    const flex = lines.some(l => /^direcci[oó]n\s*[:.]/i.test(l));
-    const cpAt = lines.findIndex(l => /^cp\s*[:.]/i.test(l));
-    const sel = new Set(lines.map((l, i) => (flex ? (flexLine(l) || (cpAt >= 0 && i === cpAt + 1 && l.includes("/"))) && clean(l) : looksAddress(l)) ? i : -1).filter(i => i >= 0));
+    const fp = flexPick(lines);
+    const sel = new Set(fp ? fp.sel : lines.map((l, i) => looksAddress(l) && !SELLER_RE.test(l) ? i : -1).filter(i => i >= 0));
+    const rank = (i) => fp && fp.rank.has(i) ? fp.rank.get(i) : 2.5;
     const sync = () => {
-      let pick = lines.filter((_, i) => sel.has(i));
-      if (flex) pick = pick.slice().sort((a, b) => flexRank(a) - flexRank(b));
-      $("addrInput").value = pick.map(clean).filter(Boolean).join(", ");
+      let pick = [...sel].sort((a, b) => fp ? rank(a) - rank(b) || a - b : a - b);
+      const out = [];
+      pick.forEach(i => { const c = fp ? clean(lines[i]) : lines[i]; if (!c) return; if (rank(i) === 0.5 && out.length) out[out.length - 1] += " " + c; else out.push(c); });
+      $("addrInput").value = out.join(", ");
     };
-    const note = document.createElement("span"); note.className = "note"; note.textContent = "Toca las líneas que forman la dirección:";
+    const note = document.createElement("span"); note.className = "note";
+    note.textContent = fp && !fp.found ? "No encontré la línea «Direccion». Toca las líneas de la dirección o escríbela:" : "Toca las líneas que forman la dirección:";
     box.append(note);
     lines.forEach((l, i) => {
       const b = document.createElement("button"); b.type = "button"; b.textContent = l;
@@ -404,8 +438,8 @@ ol.stops li.done .addr { text-decoration: line-through; }
       box.append(b);
     });
     box.hidden = false; sync();
-    const ref = lines.find(l => /^referencia\s*[:.]/i.test(l));
-    if (ref) $("refInput").value = ref.replace(/^referencia\s*[:.]\s*/i, "");
+    const ref = lines.find(l => REF_RE.test(l));
+    if (ref) $("refInput").value = tidy(ref.replace(REF_RE, ""));
   }
 
   // Gemini: devuelve la dirección del destinatario o "" si no la encuentra.
@@ -504,21 +538,23 @@ ol.stops li.done .addr { text-decoration: line-through; }
       pendingQR = qr;
     }
     const gkey = $("geminiInput").value.trim();
+    let why = gkey ? "" : "Sin clave de Gemini: leída en el teléfono. ";
     if (gkey) {
       try {
         say("Gemini está leyendo la dirección…");
         const got = await readWithGemini(await shrink(file, 1600, false), gkey);
         $("saveBtn").disabled = false;
         if (got) { $("addrInput").value = lastRead = got.address; $("refInput").value = got.ref; say("Dirección leída por Gemini. Revísala y guárdala.", "ok"); return; }
-        say("Gemini no encontró una dirección. Probando lectura en el teléfono…");
-      } catch (e) { say("Gemini: " + (e.message || e) + ". Probando lectura en el teléfono…"); }
+        why = "Gemini no encontró la dirección: leída en el teléfono. ";
+      } catch (e) { why = "Gemini falló (" + (e.message || e) + "): leída en el teléfono. "; }
+      say(why + "Leyendo…");
     }
     try {
       const img = await shrink(file);
-      const lines = await readText(img, p => say("Leyendo… " + Math.round(p * 100) + "%"));
+      const lines = await readText(img, p => say(why + "Leyendo… " + Math.round(p * 100) + "%"));
       if (!lines.length) { say("No se encontró texto. Prueba más cerca y con buena luz.", "err"); return; }
       setLines(lines); lastRead = $("addrInput").value.trim();
-      say("Revisa la dirección y guárdala.");
+      say(why + "Revisa la dirección y guárdala.", gkey ? "err" : "");
     } catch (e) {
       say("No se pudo leer la foto (" + (e.message || e) + "). Escríbela a mano.", "err");
     } finally { $("saveBtn").disabled = false; }
