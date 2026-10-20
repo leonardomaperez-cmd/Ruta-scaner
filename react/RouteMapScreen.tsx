@@ -1,5 +1,6 @@
-// RouteMapScreen: mapa con Leaflet + react-leaflet. Optimiza el orden con Valhalla y dibuja
+// RouteMapScreen: mapa con Leaflet + react-leaflet. Optimiza el orden con Valhalla (único optimizador) y dibuja
 // el depósito (casa), las paradas numeradas en el orden optimizado y la ruta en azul.
+// Si Valhalla falla, se usa el orden original.
 //   npm i leaflet react-leaflet@4 @mapbox/polyline && npm i -D @types/leaflet @types/mapbox__polyline
 
 import { useEffect, useState } from "react";
@@ -63,7 +64,12 @@ export default function RouteMapScreen({ depot, stops }: { depot: Point; stops: 
     setError("");
     optimizeWithValhalla(depot, stops)
       .then(r => { setOrdered(r.ordered); setShape(r.shape); })
-      .catch(e => setError(String(e.message || e)));
+      .catch(e => {
+        // sin otro optimizador: si Valhalla falla, las paradas quedan en el orden original, unidas en línea recta
+        setOrdered(stops);
+        setShape([[depot.lat, depot.lon], ...stops.map(s => [s.lat, s.lon] as LatLngTuple)]);
+        setError(`Valhalla no respondió (${e.message || e}). Paradas en el orden original.`);
+      });
   }, [depot, stops]);
 
   return (

@@ -191,9 +191,6 @@ ol.stops li.done .addr { text-decoration: line-through; }
    <div class="sheet-head"><h2>Ajustes</h2><button class="x" type="button" data-close aria-label="Cerrar">✕</button></div>
    <div class="wrap">
     <div class="card">
-      <label class="label" for="keyInput">Clave de TomTom (opcional)</label>
-      <input id="keyInput" type="password" autocomplete="off" placeholder="Pega tu clave (API key)">
-      <span class="note">Sin clave, la app usa mapas gratuitos de OpenStreetMap para ubicar y ordenar las paradas, sin cuenta. Con una clave de TomTom (gratis en developer.tomtom.com) la ruta tiene en cuenta el tráfico. Se guarda solo en este teléfono.</span>
       <label class="label" for="geminiInput">Clave de Gemini (lectura con inteligencia artificial)</label>
       <input id="geminiInput" type="password" autocomplete="off" placeholder="Pega tu clave de Google AI Studio">
       <span class="note">Opcional y gratis en aistudio.google.com. Con ella, la foto la lee Gemini y saca solo la dirección del destinatario. Sin ella, se lee en el teléfono. En el plan gratuito Google puede usar las fotos para mejorar sus productos.</span>
@@ -203,7 +200,7 @@ ol.stops li.done .addr { text-decoration: line-through; }
       <label class="check"><input id="zaChk" type="checkbox"> Letras de la Z a la A (la primera parada lleva la última letra)</label>
       <label class="label" for="countryInput">País (código de 2 letras, opcional)</label>
       <input id="countryInput" type="text" maxlength="2" placeholder="Ej.: AR, MX, CL, ES">
-      <span class="note">El país ayuda a que TomTom no confunda calles con el mismo nombre en otros países.</span>
+      <span class="note">El país ayuda a que el buscador no confunda calles con el mismo nombre en otros países.</span>
     </div>
     <p class="note">Las paradas se guardan en este teléfono. Exporta el CSV si quieres guardarlas aparte.</p>
    </div>
@@ -349,7 +346,7 @@ ol.stops li.done .addr { text-decoration: line-through; }
         const v = prompt("Dirección del Nº " + pad(it.num), it.address); if (v == null) return;
         const nv = v.replace(/\s+/g, " ").trim(); if (!nv || nv === it.address) return;
         it.address = nv; delete it.lat; delete it.lng; save(); refresh(false);
-        try { const g = await geocode(nv, $("keyInput").value.trim()); if (g) { it.lat = g.lat; it.lng = g.lng; save(); refresh(true); } } catch {}
+        try { const g = await geocode(nv); if (g) { it.lat = g.lat; it.lng = g.lng; save(); refresh(true); } } catch {}
       });
       acts.append(nav, ed, done, del);
       li.append(ord, a, acts); ol.append(li);
@@ -629,10 +626,10 @@ ol.stops li.done .addr { text-decoration: line-through; }
     $("stage").hidden = true; $("addrInput").value = ""; $("refInput").value = "";
     toast("Guardada como Nº " + pad(it.num));
     refresh(false);
-    try { const g = await geocode(it.address, $("keyInput").value.trim()); if (g) { it.lat = g.lat; it.lng = g.lng; save(); refresh(true); } } catch {}
+    try { const g = await geocode(it.address); if (g) { it.lat = g.lat; it.lng = g.lng; save(); refresh(true); } } catch {}
   });
 
-  // ---------- ubicar direcciones: TomTom con clave, OpenStreetMap (Nominatim) sin clave ----------
+  // ---------- ubicar direcciones: OpenStreetMap (Nominatim), gratis y sin clave ----------
   let lastNominatim = 0;
   async function geocodeOSM(text) {
     const wait = 1100 - (Date.now() - lastNominatim); // Nominatim pide máximo 1 consulta por segundo
@@ -647,21 +644,10 @@ ol.stops li.done .addr { text-decoration: line-through; }
     const j = await r.json();
     return j && j[0] ? { lat: Number(j[0].lat), lng: Number(j[0].lon) } : null;
   }
-  async function geocode(text, key) {
-    if (!key) return geocodeOSM(text);
-    const u = new URL("https://api.tomtom.com/search/2/geocode/" + encodeURIComponent(text) + ".json");
-    u.searchParams.set("key", key); u.searchParams.set("limit", "1"); u.searchParams.set("language", "es-ES");
-    const cc = $("countryInput").value.trim().toUpperCase(); if (/^[A-Z]{2}$/.test(cc)) u.searchParams.set("countrySet", cc);
-    const r = await fetch(u);
-    if (r.status === 403 || r.status === 401) throw new Error("clave de TomTom no válida");
-    if (!r.ok) throw new Error("TomTom respondió " + r.status);
-    const j = await r.json(); const p = j.results && j.results[0] && j.results[0].position;
-    return p ? { lat: p.lat, lng: p.lon } : null;
-  }
+  const geocode = (text) => geocodeOSM(text);
 
   async function optimize() {
     const st = $("optStatus"); const say = (m, c) => { st.className = "status" + (c ? " " + c : ""); st.textContent = m; };
-    const key = $("keyInput").value.trim();
     const todo = items.filter(it => !it.done);
     if (!todo.length) { say("No hay paradas pendientes.", "err"); return; }
     const startText = $("startInput").value.trim();
@@ -671,7 +657,7 @@ ol.stops li.done .addr { text-decoration: line-through; }
         const it = todo[i];
         if (typeof it.lat !== "number") {
           say("Ubicando direcciones… " + (i + 1) + "/" + todo.length);
-          const g = await geocode(it.address, key);
+          const g = await geocode(it.address);
           if (g) { it.lat = g.lat; it.lng = g.lng; }
         }
       }
@@ -688,61 +674,22 @@ ol.stops li.done .addr { text-decoration: line-through; }
       const missing = todo.length - located.length;
       if (!located.length) { say("No se encontró ninguna dirección. Revisa que tengan calle, número y ciudad.", "err"); return; }
       let start;
-      if (startText) { say("Ubicando el punto de partida…"); start = await geocode(startText, key); if (!start) { say("No encontré el punto de partida. Escríbelo con calle, número y ciudad.", "err"); return; } }
+      if (startText) { say("Ubicando el punto de partida…"); start = await geocode(startText); if (!start) { say("No encontré el punto de partida. Escríbelo con calle, número y ciudad.", "err"); return; } }
       else start = { lat: located[0].lat, lng: located[0].lng };
       const back = $("returnChk").checked;
-      if (!key) {
-        say("Calculando la mejor ruta…");
-        let res, note = "";
-        const few = located.slice(0, 99);
-        try { res = await routeValhalla(start, few, back); }
-        catch (e1) {
-          try { res = await routeOSRM(start, few, back); }
-          catch (e2) { res = await routeLocal(start, few, back); note = " (orden aproximado: " + (e1.message || e1) + " / " + (e2.message || e2) + ")"; }
-        }
-        if (!res.line || res.line.length < 2) {
-          try {
-            const pts = [start, ...res.order.map(byNum), ...(back ? [start] : [])];
-            const u = "https://router.project-osrm.org/route/v1/driving/" + pts.map(p => p.lng.toFixed(6) + "," + p.lat.toFixed(6)).join(";") + "?geometries=geojson&overview=full";
-            const r = await fetch(u); const j = await r.json();
-            if (r.ok && j.code === "Ok" && j.routes && j.routes[0]) res.line = j.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
-          } catch {}
-        }
-        const min = Math.round(res.s / 60);
-        route = { order: res.order, line: res.line, start: startText ? start : null,
-          summary: (res.m / 1000).toFixed(1) + " km · " + (min >= 60 ? Math.floor(min / 60) + " h " + (min % 60) + " min" : min + " min") + (back ? " ida y vuelta" : "") };
-        save(); refresh(true);
-        const warn = far.length ? "Nº " + far.map(pad).join(", ") + " quedó lejos del resto y no se incluyó; revisa la dirección (agrega ciudad) o pon el país en Ajustes. "
-          : (missing ? missing + " dirección(es) no se encontraron en el mapa y quedaron sin ordenar. " : "");
-        say(warn + (located.length > 99 ? "Se ordenaron las primeras 99 paradas." : "Ruta optimizada.") + note, warn || note ? "err" : "ok");
-        return;
-      }
-      // TomTom reordena las paradas intermedias entre salida y llegada fijas (máx. 150).
-      // Sin regreso: se calcula ida y vuelta y se descarta el último tramo.
-      const stops = located.slice(0, 148);
-      const pts = [start, ...stops, start];
+      // Valhalla es el único optimizador. Si falla, las paradas quedan en el orden original (por número).
       say("Calculando la mejor ruta…");
-      const u = new URL("https://api.tomtom.com/routing/1/calculateRoute/" + pts.map(p => p.lat + "," + p.lng).join(":") + "/json");
-      u.searchParams.set("key", key); u.searchParams.set("computeBestOrder", "true"); u.searchParams.set("routeType", "fastest");
-      u.searchParams.set("traffic", "true"); u.searchParams.set("travelMode", "car");
-      const r = await fetch(u);
-      if (r.status === 403 || r.status === 401) throw new Error("clave de TomTom no válida");
-      if (!r.ok) { const t = await r.text().catch(() => ""); throw new Error("TomTom respondió " + r.status + (t ? ": " + t.slice(0, 120) : "")); }
-      const j = await r.json();
-      const ow = (j.optimizedWaypoints || []).slice().sort((a, b) => a.optimizedIndex - b.optimizedIndex);
-      const orderIdx = ow.length ? ow.map(w => w.providedIndex) : stops.map((_, i) => i);
-      const order = orderIdx.map(i => stops[i].num);
-      const legs = (j.routes && j.routes[0] && j.routes[0].legs) || [];
-      const useLegs = back ? legs : legs.slice(0, -1);
-      let m = 0, s = 0; const line = [];
-      useLegs.forEach(l => { m += l.summary.lengthInMeters; s += l.summary.travelTimeInSeconds; (l.points || []).forEach(p => line.push([p.latitude, p.longitude])); });
-      const min = Math.round(s / 60);
-      route = {
-        order, line, start: startText ? start : null,
-        summary: (m / 1000).toFixed(1) + " km · " + (min >= 60 ? Math.floor(min / 60) + " h " + (min % 60) + " min" : min + " min") + (back ? " ida y vuelta" : ""),
-      };
+      const few = located.slice(0, 99);
+      let res, note = "";
+      try { res = await optimizeWithValhalla(start, few, back); }
+      catch (e) { res = await originalOrder(start, few, back); note = "Valhalla no respondió (" + (e.message || e) + "): las paradas quedaron en el orden original."; }
+      const min = Math.round(res.s / 60);
+      route = { order: res.order, line: res.line, start: startText ? start : null,
+        summary: (res.m / 1000).toFixed(1) + " km · " + (min >= 60 ? Math.floor(min / 60) + " h " + (min % 60) + " min" : min + " min") + (back ? " ida y vuelta" : "") };
       save(); refresh(true);
-      say(missing ? missing + " dirección(es) no se encontraron en el mapa y quedaron sin ordenar." : (located.length > 148 ? "Se ordenaron las primeras 148 paradas." : "Ruta optimizada."), missing ? "err" : "ok");
+      const warn = far.length ? "Nº " + far.map(pad).join(", ") + " quedó lejos del resto y no se incluyó; revisa la dirección (agrega ciudad) o pon el país en Ajustes. "
+        : (missing ? missing + " dirección(es) no se encontraron en el mapa y quedaron sin ordenar. " : "");
+      say(warn + (note || (located.length > 99 ? "Se ordenaron las primeras 99 paradas." : "Ruta optimizada.")), warn || note ? "err" : "ok");
     } catch (e) {
       route = route && route.summary && !/^0\.0 km/.test(route.summary) ? route : null; render();
       say("No se pudo optimizar: " + (e.message || e), "err");
@@ -752,7 +699,7 @@ ol.stops li.done .addr { text-decoration: line-through; }
   // Después de guardar, la cámara queda lista para la siguiente etiqueta.
   $("saveBtn").addEventListener("click", () => { if ($("stage").hidden) resumeScan(); });
 
-  // Ruta sin clave, opción 1: optimizador público de Valhalla (FOSSGIS). Fija la primera y la última
+  // Optimizador: servidor público de Valhalla (FOSSGIS). Fija la primera y la última
   // parada; se manda ida y vuelta a la salida y, si no hay regreso, se descarta el último tramo.
   function decodePolyline6(str) {
     const out = []; let i = 0, lat = 0, lng = 0;
@@ -767,8 +714,7 @@ ol.stops li.done .addr { text-decoration: line-through; }
     }
     return out;
   }
-  async function routeValhalla(start, stops, back) {
-    if (stops.length < 2) throw new Error("Valhalla necesita al menos 2 paradas");
+  async function optimizeWithValhalla(start, stops, back) {
     const locs = [start, ...stops, start].map(p => ({ lat: +p.lat.toFixed(6), lon: +p.lng.toFixed(6) }));
     const q = { locations: locs, costing: "auto", units: "kilometers", directions_options: { language: "es-ES" }, directions_type: "none" };
     const r = await fetch("https://valhalla1.openstreetmap.de/optimized_route?json=" + encodeURIComponent(JSON.stringify(q)));
@@ -782,50 +728,16 @@ ol.stops li.done .addr { text-decoration: line-through; }
     return { order, line, m, s };
   }
 
-  // Ruta sin clave, opción 2: servidor público de OSRM (OpenStreetMap). Calcula ida y vuelta desde la salida;
-  // si no hay regreso, se descarta el último tramo.
-  async function routeOSRM(start, stops, back) {
-    const pts = [start, ...stops];
-    const u = "https://router.project-osrm.org/trip/v1/driving/" + pts.map(p => p.lng.toFixed(6) + "," + p.lat.toFixed(6)).join(";") +
-      "?roundtrip=true&source=first&geometries=geojson&overview=full";
-    const r = await fetch(u);
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok || j.code !== "Ok" || !j.trips || !j.trips[0]) throw new Error("servidor de rutas " + r.status + (j.code ? " " + j.code : "") + (j.message ? ": " + j.message : ""));
-    const trip = j.trips[0];
-    const pos = j.waypoints.map(w => w.waypoint_index); // posición de cada punto dentro del recorrido
-    const order = stops.map((p, i) => ({ num: p.num, at: pos[i + 1] })).sort((a, b) => a.at - b.at).map(x => x.num);
-    let coords = trip.geometry.coordinates.map(c => [c[1], c[0]]);
-    let m = trip.distance, s = trip.duration;
-    if (!back && trip.legs.length) {
-      const last = trip.legs[trip.legs.length - 1]; m -= last.distance; s -= last.duration;
-      const lastStop = stops.find(p => p.num === order[order.length - 1]);
-      const d = (c) => (c[0] - lastStop.lat) ** 2 + (c[1] - lastStop.lng) ** 2;
-      let best = 0; coords.forEach((c, i) => { if (d(c) <= d(coords[best]) + 1e-10) best = i; });
-      coords = coords.slice(0, best + 1);
-    }
-    return { order, line: coords, m, s };
-  }
-
   function kmBetween(a, b) {
     const R = 6371, r = Math.PI / 180, dLat = (b.lat - a.lat) * r, dLng = (b.lng - a.lng) * r;
     const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLng / 2) ** 2;
     return 2 * R * Math.asin(Math.sqrt(h));
   }
-  // Respaldo si el servidor de rutas falla: orden por cercanía (vecino más cercano + mejora 2-opt),
-  // y el trazado por calles del servidor si responde; si no, líneas rectas.
-  async function routeLocal(start, stops, back) {
-    const left = stops.slice(), path = []; let cur = start;
-    while (left.length) { let bi = 0; for (let i = 1; i < left.length; i++) if (kmBetween(cur, left[i]) < kmBetween(cur, left[bi])) bi = i; cur = left.splice(bi, 1)[0]; path.push(cur); }
-    const full = [start, ...path, ...(back ? [start] : [])];
-    const end = back ? full.length - 1 : full.length;
-    for (let pass = 0, imp = true; imp && pass < 50; pass++) {
-      imp = false;
-      for (let i = 1; i < end - 1; i++) for (let j = i + 1; j < end; j++) {
-        const a = full[i - 1], b = full[i], c = full[j], d = full[j + 1];
-        if (kmBetween(a, c) + (d ? kmBetween(b, d) : 0) + 1e-9 < kmBetween(a, b) + (d ? kmBetween(c, d) : 0)) { full.splice(i, j - i + 1, ...full.slice(i, j + 1).reverse()); imp = true; }
-      }
-    }
-    const order = full.slice(1, end).map(p => p.num);
+
+  // Si Valhalla falla: las paradas en el orden original (por número), sin reordenar.
+  // Solo se pide el trazado por calles a OSRM para dibujar la línea; si tampoco responde, se unen en línea recta.
+  async function originalOrder(start, stops, back) {
+    const full = [start, ...stops, ...(back ? [start] : [])];
     let line = full.map(p => [p.lat, p.lng]), m = 0, s = 0;
     for (let i = 1; i < full.length; i++) m += kmBetween(full[i - 1], full[i]) * 1300; // ~30% más que en línea recta
     s = m / 8.3; // ~30 km/h en ciudad
@@ -834,11 +746,12 @@ ol.stops li.done .addr { text-decoration: line-through; }
       const r = await fetch(u); const j = await r.json();
       if (r.ok && j.code === "Ok" && j.routes && j.routes[0]) { line = j.routes[0].geometry.coordinates.map(c => [c[1], c[0]]); m = j.routes[0].distance; s = j.routes[0].duration; }
     } catch {}
-    return { order, line, m, s };
+    return { order: stops.map(p => p.num), line, m, s };
   }
 
   // ---------- ajustes, exportar ----------
-  [["keyInput", "key"], ["geminiInput", "gemini"], ["startInput", "start"], ["countryInput", "country"]].forEach(([id, k]) => {
+  try { localStorage.removeItem(KEY + ":key"); } catch {} // ya no se usa clave de TomTom
+  [["geminiInput", "gemini"], ["startInput", "start"], ["countryInput", "country"]].forEach(([id, k]) => {
     $(id).value = store.get(k, "");
     $(id).addEventListener("change", () => store.set(k, $(id).value.trim()));
   });
