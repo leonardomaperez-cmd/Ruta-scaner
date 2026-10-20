@@ -200,8 +200,8 @@ ol.stops li.done .addr { text-decoration: line-through; }
       <label class="check"><input id="zaChk" type="checkbox"> Letras de la Z a la A (la primera parada lleva la última letra)</label>
       <label class="label" for="mapStyle">Estilo del mapa</label>
       <select id="mapStyle">
+        <option value="osm">OpenStreetMap</option>
         <option value="claro">Calles claras (CARTO)</option>
-        <option value="osm">OpenStreetMap clásico</option>
         <option value="oscuro">Oscuro (CARTO)</option>
         <option value="satelite">Satélite (Esri)</option>
       </select>
@@ -255,12 +255,12 @@ ol.stops li.done .addr { text-decoration: line-through; }
   };
   let base = null;
   function setBasemap(name) {
-    const b = BASEMAPS[name] || BASEMAPS.claro;
+    const b = BASEMAPS[name] || BASEMAPS.osm;
     if (base) map.removeLayer(base);
     base = L.tileLayer(b[0], { maxZoom: b[2], attribution: b[1], subdomains: "abcd" }).addTo(map);
   }
-  const savedStyle = store.get("mapStyle", "claro");
-  setBasemap(savedStyle); $("mapStyle").value = BASEMAPS[savedStyle] ? savedStyle : "claro";
+  const savedStyle = store.get("mapStyle", "osm");
+  setBasemap(savedStyle); $("mapStyle").value = BASEMAPS[savedStyle] ? savedStyle : "osm";
   $("mapStyle").addEventListener("change", () => { store.set("mapStyle", $("mapStyle").value); setBasemap($("mapStyle").value); });
   const layer = L.layerGroup().addTo(map);
   const pinIcon = (text, cls) => L.divIcon({ className: "", html: `<div class="pin ${cls || ""}"><span>${text}</span></div>`, iconSize: [32, 32], iconAnchor: [16, 32], popupAnchor: [0, -30] });
