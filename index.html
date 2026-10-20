@@ -309,8 +309,8 @@ ol.stops li.done .addr { text-decoration: line-through; }
     const street = route && route.line && route.line.length > 1;
     const path = street ? route.line : chain;
     if (path.length > 1) {
-      L.polyline(path, { color: "#ffffff", weight: street ? 9 : 6, opacity: .9 }).addTo(layer);
-      L.polyline(path, { color: route ? "#1a73e8" : "#5b6774", weight: street ? 5 : 3, opacity: .95, dashArray: street ? null : "8 8" }).addTo(layer);
+      L.polyline(path, { color: "#ffffff", weight: street ? 5 : 4, opacity: .9 }).addTo(layer);
+      L.polyline(path, { color: route ? "#1a73e8" : "#5b6774", weight: street ? 3 : 2, opacity: .95, dashArray: street ? null : "8 8" }).addTo(layer);
     }
     if (route && route.start) {
       L.marker([route.start.lat, route.start.lng], { icon: pinIcon("S", "start") }).bindPopup("<b>Salida</b>").addTo(layer);
