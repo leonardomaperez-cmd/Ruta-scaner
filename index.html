@@ -95,6 +95,7 @@ ol.stops li.done .addr { text-decoration: line-through; }
 .badge.none { background: var(--bg); color: var(--muted); border-color: var(--line); }
 .addr { min-width: 0; overflow-wrap: anywhere; }
 .addr small { display: block; color: var(--muted); font: 500 .8rem var(--mono); }
+.addr small.ref { font: italic 500 .85rem var(--body); margin-top: 2px; }
 .acts { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
 .mini { background: none; border: 1px solid var(--line); color: var(--ink); font: 500 .8rem var(--body); border-radius: 8px; padding: 6px 8px; cursor: pointer; text-decoration: none; }
 .mini.confirm { color: var(--bad); border-color: var(--bad); font-weight: 600; }
@@ -151,6 +152,8 @@ ol.stops li.done .addr { text-decoration: line-through; }
     <div class="lines" id="lines" hidden></div>
     <label class="label" for="addrInput">Dirección</label>
     <textarea id="addrInput" placeholder="Ej.: Av. Corrientes 1234, CABA"></textarea>
+    <label class="label" for="refInput">Referencia (opcional)</label>
+    <input id="refInput" type="text" placeholder="Ej.: portón negro, timbre 2">
     <div class="assign">
       <div class="tag" id="nextTag">0001</div>
       <button id="saveBtn" class="btn btn-primary" type="button">Guardar</button>
@@ -258,7 +261,7 @@ ol.stops li.done .addr { text-decoration: line-through; }
       if (typeof it.lat !== "number") return;
       const stop = route ? route.order.indexOf(it.num) + 1 : 0;
       const m = L.marker([it.lat, it.lng], { icon: pinIcon(stop || it.num, it.done ? "done" : (stop ? "" : "unordered")) });
-      m.bindPopup(`<b>${stop ? "Parada " + stop + " · " : ""}Nº ${pad(it.num)}</b><br>${esc(it.address)}<br><a href="${gmaps(it)}" target="_blank" rel="noopener">Navegar aquí</a>`);
+      m.bindPopup(`<b>${stop ? "Parada " + stop + " · " : ""}Nº ${pad(it.num)}</b><br>${esc(it.address)}${it.ref ? "<br><i>" + esc(it.ref) + "</i>" : ""}<br><a href="${gmaps(it)}" target="_blank" rel="noopener">Navegar aquí</a>`);
       m.addTo(layer);
       pts.push([it.lat, it.lng]);
     });
@@ -285,6 +288,7 @@ ol.stops li.done .addr { text-decoration: line-through; }
       const a = document.createElement("div"); a.className = "addr";
       const small = document.createElement("small"); small.textContent = "Nº " + pad(it.num) + (typeof it.lat === "number" ? "" : " · sin ubicar");
       a.append(small, document.createTextNode(it.address));
+      if (it.ref) { const r = document.createElement("small"); r.className = "ref"; r.textContent = it.ref; a.append(r); }
       a.style.cursor = "pointer";
       a.addEventListener("click", () => { if (typeof it.lat === "number") { map.setView([it.lat, it.lng], 16); closeSheets(); } });
       const acts = document.createElement("div"); acts.className = "acts";
@@ -339,11 +343,28 @@ ol.stops li.done .addr { text-decoration: line-through; }
   // Marca de entrada las líneas que parecen dirección: tienen número y palabras de calle o código postal.
   const looksAddress = (l) => /\d/.test(l) && (/\b(av|avda|avenida|calle|c\/|pje|pasaje|ruta|km|blvd|bv|boulevard|diag|piso|dpto|depto|cp|col|colonia|barrio|n[º°o]\.?)\b/i.test(l) || /\b[A-Z]?\d{4,5}[A-Z]{0,3}\b/.test(l) || /^[A-ZÁÉÍÓÚÑa-záéíóúñ.' ]+ \d{1,5}\b/.test(l));
 
+  // Etiquetas Mercado Libre Flex: la dirección está en «Direccion:», «Barrio:» y «CP:»; lo de arriba es del vendedor.
+  const flexLine = (l) => /^(direcci[oó]n|barrio|cp)\s*[:.]/i.test(l);
+  // «PARTIDO / LOCALIDAD» → «Localidad, Partido» (una sola vez si son iguales)
+  const title = (t) => t.toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase());
+  const clean = (l) => {
+    const pl = l.match(/^([^/\d]{3,})\/([^/\d]{3,})$/);
+    if (pl) { const a = title(pl[1].trim()), b = title(pl[2].trim()); return a === b ? a : b + ", " + a; }
+    return l.replace(/^(direcci[oó]n|barrio)\s*[:.]\s*/i, "").replace(/^cp\s*[:.]\s*/i, "CP ").trim();
+  };
+  // Orden de la dirección Flex: calle, barrio, localidad/partido, CP.
+  const flexRank = (l) => /^direcci/i.test(l) ? 0 : /^barrio/i.test(l) ? 1 : /^cp/i.test(l) ? 3 : 2;
   function setLines(lines) {
     const box = $("lines"); box.textContent = "";
     if (!lines.length) { box.hidden = true; return; }
-    const sel = new Set(lines.map((l, i) => looksAddress(l) ? i : -1).filter(i => i >= 0));
-    const sync = () => { $("addrInput").value = lines.filter((_, i) => sel.has(i)).join(", "); };
+    const flex = lines.some(l => /^direcci[oó]n\s*[:.]/i.test(l));
+    const cpAt = lines.findIndex(l => /^cp\s*[:.]/i.test(l));
+    const sel = new Set(lines.map((l, i) => (flex ? (flexLine(l) || (cpAt >= 0 && i === cpAt + 1 && l.includes("/"))) && clean(l) : looksAddress(l)) ? i : -1).filter(i => i >= 0));
+    const sync = () => {
+      let pick = lines.filter((_, i) => sel.has(i));
+      if (flex) pick = pick.slice().sort((a, b) => flexRank(a) - flexRank(b));
+      $("addrInput").value = pick.map(clean).filter(Boolean).join(", ");
+    };
     const note = document.createElement("span"); note.className = "note"; note.textContent = "Toca las líneas que forman la dirección:";
     box.append(note);
     lines.forEach((l, i) => {
@@ -353,17 +374,42 @@ ol.stops li.done .addr { text-decoration: line-through; }
       box.append(b);
     });
     box.hidden = false; sync();
+    const ref = lines.find(l => /^referencia\s*[:.]/i.test(l));
+    if (ref) $("refInput").value = ref.replace(/^referencia\s*[:.]\s*/i, "");
   }
 
   // Gemini: devuelve la dirección del destinatario o "" si no la encuentra.
   const GEMINI_MODELS = ["gemini-flash-latest", "gemini-3.6-flash", "gemini-3.5-flash-lite"];
+  const GEMINI_PROMPT = [
+    "La imagen es una etiqueta de envío en Argentina, casi siempre de Mercado Libre Flex (zona Buenos Aires).",
+    "Cómo es la etiqueta Flex: ARRIBA está el VENDEDOR (nombre con #número, su calle, «Ciudad CP», «Envio:», «Pack ID:»), a veces con datos del producto (SKU, Unidades). IGNORA todo eso.",
+    "En el medio: «FLEX» o «Envío Flex», la fecha, el código QR, «CP: NNNN» en letra grande, dos líneas con el partido y la localidad (ej.: «SAN ISIDRO / MARTÍNEZ», «PILAR / PILAR») y «RESIDENCIAL» o «COMERCIAL» (a veces con horario de cierre).",
+    "ABAJO está el DESTINATARIO: «Direccion:», «Barrio:» (puede estar vacío), «Referencia:» y «Destinatario:». Esa es la dirección que quiero.",
+    "Arma la dirección así: lo que dice «Direccion:» (calle, número, piso/depto si hay), luego el barrio si no está vacío, luego la localidad y el partido de las líneas del medio (sin repetir si son iguales), y «CP NNNN».",
+    "Ejemplos de salida: «Avenida Avellaneda 4026, San Fernando, CP 1646»; «Calle San Isidro Labrador 451, Martínez, San Isidro, CP 1640»; «Calle 12 de Octubre 565, Pilar, CP 1630».",
+    "No uses nombres de personas, ni el SKU, Pack ID, fecha o QR. Ignora lo escrito a mano (números o letras con birome). No inventes datos que no se ven.",
+    "Si la etiqueta no es Flex, extrae igual la dirección del destinatario, nunca la del remitente.",
+    "Responde solo JSON: {\"encontrada\": true|false, \"direccion\": \"...\", \"referencia\": \"texto de Referencia o vacío\", \"tipo\": \"residencial|comercial|\"}.",
+  ].join("\n");
+  // Correcciones que hizo el usuario: se guardan las últimas y se le muestran a Gemini como ejemplos.
+  const FIX_MAX = 8;
+  function rememberFix(read, fixed) {
+    if (!read || !fixed || read === fixed) return;
+    const list = store.get("fixes", []).filter(f => f.leido !== read);
+    list.push({ leido: read, corregido: fixed });
+    store.set("fixes", list.slice(-FIX_MAX));
+  }
+  function fixesText() {
+    const list = store.get("fixes", []).slice(-5);
+    if (!list.length) return "";
+    return "\nAntes te equivocaste así y el usuario lo corrigió. Aprende de esto (formato y errores típicos):\n" +
+      list.map(f => "- Leíste: «" + f.leido + "» → Correcto: «" + f.corregido + "»").join("\n");
+  }
   async function readWithGemini(img, key) {
     const b64 = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(",")[1]); fr.onerror = rej; fr.readAsDataURL(img); });
     const body = { contents: [{ parts: [
       { inline_data: { mime_type: img.type || "image/jpeg", data: b64 } },
-      { text: "La imagen es una etiqueta de envío, paquete o sobre. Extrae la dirección del DESTINATARIO (no la del remitente). " +
-        "Responde solo JSON: {\"encontrada\": true|false, \"direccion\": \"calle y número, piso/depto, localidad, provincia, código postal\"}. " +
-        "Una sola línea separada por comas, tal como aparece, sin inventar datos." },
+      { text: GEMINI_PROMPT + fixesText() },
     ] }], generationConfig: { responseMimeType: "application/json", temperature: 0 } };
     let last = "";
     for (const model of GEMINI_MODELS) {
@@ -377,23 +423,25 @@ ol.stops li.done .addr { text-decoration: line-through; }
       const txt = j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts && j.candidates[0].content.parts.map(p => p.text || "").join("");
       const m = String(txt || "").match(/\{[\s\S]*\}/);
       const o = m ? JSON.parse(m[0]) : null;
-      return o && o.encontrada && o.direccion ? String(o.direccion).trim() : "";
+      if (!(o && o.encontrada && o.direccion)) return null;
+      return { address: String(o.direccion).trim(), ref: String(o.referencia || "").trim() };
     }
     throw new Error(last || "Gemini no respondió");
   }
 
+  let lastRead = ""; // lo que leyó el escáner, para aprender si el usuario lo corrige
   async function onPhoto(file) {
     $("stage").hidden = false; $("previewBox").hidden = false; $("lines").hidden = true;
-    $("previewImg").src = URL.createObjectURL(file); $("addrInput").value = "";
+    $("previewImg").src = URL.createObjectURL(file); $("addrInput").value = ""; $("refInput").value = ""; lastRead = "";
     const st = $("scanStatus"); const say = (m, c) => { st.className = "status" + (c ? " " + c : ""); st.textContent = m; };
     say("Preparando la foto…"); $("saveBtn").disabled = true;
     const gkey = $("geminiInput").value.trim();
     if (gkey) {
       try {
         say("Gemini está leyendo la dirección…");
-        const addr = await readWithGemini(await shrink(file, 1600, false), gkey);
+        const got = await readWithGemini(await shrink(file, 1600, false), gkey);
         $("saveBtn").disabled = false;
-        if (addr) { $("addrInput").value = addr; say("Dirección leída por Gemini. Revísala y guárdala.", "ok"); return; }
+        if (got) { $("addrInput").value = lastRead = got.address; $("refInput").value = got.ref; say("Dirección leída por Gemini. Revísala y guárdala.", "ok"); return; }
         say("Gemini no encontró una dirección. Probando lectura en el teléfono…");
       } catch (e) { say("Gemini: " + (e.message || e) + ". Probando lectura en el teléfono…"); }
     }
@@ -401,7 +449,7 @@ ol.stops li.done .addr { text-decoration: line-through; }
       const img = await shrink(file);
       const lines = await readText(img, p => say("Leyendo… " + Math.round(p * 100) + "%"));
       if (!lines.length) { say("No se encontró texto. Prueba más cerca y con buena luz.", "err"); return; }
-      setLines(lines);
+      setLines(lines); lastRead = $("addrInput").value.trim();
       say("Revisa la dirección y guárdala.");
     } catch (e) {
       say("No se pudo leer la foto (" + (e.message || e) + "). Escríbela a mano.", "err");
@@ -449,7 +497,7 @@ ol.stops li.done .addr { text-decoration: line-through; }
   });
   $("galleryBtn").addEventListener("click", () => $("gallery").click());
   ["photo", "gallery"].forEach(id => $(id).addEventListener("change", e => { const f = e.target.files[0]; if (f) onPhoto(f); e.target.value = ""; }));
-  $("manualBtn").addEventListener("click", () => { $("stage").hidden = false; $("scanControls").hidden = true; $("previewBox").hidden = true; $("lines").hidden = true; $("addrInput").focus(); });
+  $("manualBtn").addEventListener("click", () => { lastRead = ""; $("refInput").value = ""; $("stage").hidden = false; $("scanControls").hidden = true; $("previewBox").hidden = true; $("lines").hidden = true; $("addrInput").focus(); });
   ["photo", "gallery"].forEach(id => $(id).addEventListener("change", () => { $("scanControls").hidden = true; }));
 
   function toast(m, bad) { const t = $("toast"); t.textContent = m; t.className = "scan-msg"; t.style.color = bad ? "#ff8a80" : "#9ff0c4"; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 3500); }
@@ -458,8 +506,10 @@ ol.stops li.done .addr { text-decoration: line-through; }
     const address = $("addrInput").value.replace(/\s+/g, " ").trim();
     if (!address) { toast("Escribe o escanea una dirección primero.", true); return; }
     const it = { num: nextNum(), address, createdAt: new Date().toISOString() };
+    const ref = $("refInput").value.replace(/\s+/g, " ").trim(); if (ref) it.ref = ref;
+    rememberFix(lastRead.replace(/\s+/g, " "), address); lastRead = "";
     items.push(it); save();
-    $("stage").hidden = true; $("addrInput").value = "";
+    $("stage").hidden = true; $("addrInput").value = ""; $("refInput").value = "";
     toast("Guardada como Nº " + pad(it.num));
     refresh(false);
     try { const g = await geocode(it.address, $("keyInput").value.trim()); if (g) { it.lat = g.lat; it.lng = g.lng; save(); refresh(true); } } catch {}
@@ -677,8 +727,8 @@ ol.stops li.done .addr { text-decoration: line-through; }
   });
   $("exportBtn").addEventListener("click", () => {
     const q = (s) => '"' + String(s).replace(/"/g, '""') + '"';
-    const rows = orderedItems().map(it => [route ? (route.order.indexOf(it.num) + 1 || "") : "", pad(it.num), q(it.address), it.lat ?? "", it.lng ?? "", it.done ? "si" : "no"].join(","));
-    const csv = "﻿parada,numero,direccion,lat,lng,entregada\n" + rows.join("\n") + "\n";
+    const rows = orderedItems().map(it => [route ? (route.order.indexOf(it.num) + 1 || "") : "", pad(it.num), q(it.address), q(it.ref || ""), it.lat ?? "", it.lng ?? "", it.done ? "si" : "no"].join(","));
+    const csv = "﻿parada,numero,direccion,referencia,lat,lng,entregada\n" + rows.join("\n") + "\n";
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
     a.download = "paradas.csv"; document.body.append(a); a.click(); a.remove();
   });
