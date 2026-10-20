@@ -417,7 +417,15 @@ ol.stops li.done .addr { text-decoration: line-through; }
         }
       }
       save();
-      const located = todo.filter(it => typeof it.lat === "number");
+      let located = todo.filter(it => typeof it.lat === "number");
+      // Una dirección ubicada a más de 150 km del resto casi siempre es un error (misma calle en otra ciudad o país).
+      const far = [];
+      if (located.length >= 3) {
+        const med = (a) => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
+        const c = { lat: med(located.map(p => p.lat)), lng: med(located.map(p => p.lng)) };
+        located = located.filter(p => { const ok = kmBetween(p, c) <= 150; if (!ok) { far.push(p.num); delete p.lat; delete p.lng; } return ok; });
+        if (far.length) save();
+      }
       const missing = todo.length - located.length;
       if (!located.length) { say("No se encontró ninguna dirección. Revisa que tengan calle, número y ciudad.", "err"); return; }
       let start;
@@ -426,12 +434,16 @@ ol.stops li.done .addr { text-decoration: line-through; }
       const back = $("returnChk").checked;
       if (!key) {
         say("Calculando la mejor ruta…");
-        const res = await routeOSRM(start, located.slice(0, 99), back);
+        let res, note = "";
+        try { res = await routeOSRM(start, located.slice(0, 99), back); }
+        catch (e) { res = await routeLocal(start, located.slice(0, 99), back); note = " (orden aproximado: " + (e.message || e) + ")"; }
         const min = Math.round(res.s / 60);
         route = { order: res.order, line: res.line, start: startText ? start : null,
           summary: (res.m / 1000).toFixed(1) + " km · " + (min >= 60 ? Math.floor(min / 60) + " h " + (min % 60) + " min" : min + " min") + (back ? " ida y vuelta" : "") };
         save(); refresh(true);
-        say(missing ? missing + " dirección(es) no se encontraron en el mapa y quedaron sin ordenar." : (located.length > 99 ? "Se ordenaron las primeras 99 paradas." : "Ruta optimizada."), missing ? "err" : "ok");
+        const warn = far.length ? "Nº " + far.map(pad).join(", ") + " quedó lejos del resto y no se incluyó; revisa la dirección (agrega ciudad) o pon el país en Ajustes. "
+          : (missing ? missing + " dirección(es) no se encontraron en el mapa y quedaron sin ordenar. " : "");
+        say(warn + (located.length > 99 ? "Se ordenaron las primeras 99 paradas." : "Ruta optimizada.") + note, warn || note ? "err" : "ok");
         return;
       }
       // TomTom reordena las paradas intermedias entre salida y llegada fijas (máx. 150).
@@ -461,6 +473,7 @@ ol.stops li.done .addr { text-decoration: line-through; }
       save(); refresh(true);
       say(missing ? missing + " dirección(es) no se encontraron en el mapa y quedaron sin ordenar." : (located.length > 148 ? "Se ordenaron las primeras 148 paradas." : "Ruta optimizada."), missing ? "err" : "ok");
     } catch (e) {
+      route = route && route.summary && !/^0\.0 km/.test(route.summary) ? route : null; render();
       say("No se pudo optimizar: " + (e.message || e), "err");
     } finally { $("optBtn").disabled = false; }
   }
@@ -473,9 +486,8 @@ ol.stops li.done .addr { text-decoration: line-through; }
     const u = "https://router.project-osrm.org/trip/v1/driving/" + pts.map(p => p.lng.toFixed(6) + "," + p.lat.toFixed(6)).join(";") +
       "?roundtrip=true&source=first&geometries=geojson&overview=full";
     const r = await fetch(u);
-    if (!r.ok) throw new Error("el servidor de rutas respondió " + r.status + ". Prueba de nuevo en un rato");
-    const j = await r.json();
-    if (j.code !== "Ok" || !j.trips || !j.trips[0]) throw new Error("no se encontró un camino entre las paradas");
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.code !== "Ok" || !j.trips || !j.trips[0]) throw new Error("servidor de rutas " + r.status + (j.code ? " " + j.code : "") + (j.message ? ": " + j.message : ""));
     const trip = j.trips[0];
     const pos = j.waypoints.map(w => w.waypoint_index); // posición de cada punto dentro del recorrido
     const order = stops.map((p, i) => ({ num: p.num, at: pos[i + 1] })).sort((a, b) => a.at - b.at).map(x => x.num);
@@ -491,11 +503,43 @@ ol.stops li.done .addr { text-decoration: line-through; }
     return { order, line: coords, m, s };
   }
 
+  function kmBetween(a, b) {
+    const R = 6371, r = Math.PI / 180, dLat = (b.lat - a.lat) * r, dLng = (b.lng - a.lng) * r;
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+  // Respaldo si el servidor de rutas falla: orden por cercanía (vecino más cercano + mejora 2-opt),
+  // y el trazado por calles del servidor si responde; si no, líneas rectas.
+  async function routeLocal(start, stops, back) {
+    const left = stops.slice(), path = []; let cur = start;
+    while (left.length) { let bi = 0; for (let i = 1; i < left.length; i++) if (kmBetween(cur, left[i]) < kmBetween(cur, left[bi])) bi = i; cur = left.splice(bi, 1)[0]; path.push(cur); }
+    const full = [start, ...path, ...(back ? [start] : [])];
+    const end = back ? full.length - 1 : full.length;
+    for (let pass = 0, imp = true; imp && pass < 50; pass++) {
+      imp = false;
+      for (let i = 1; i < end - 1; i++) for (let j = i + 1; j < end; j++) {
+        const a = full[i - 1], b = full[i], c = full[j], d = full[j + 1];
+        if (kmBetween(a, c) + (d ? kmBetween(b, d) : 0) + 1e-9 < kmBetween(a, b) + (d ? kmBetween(c, d) : 0)) { full.splice(i, j - i + 1, ...full.slice(i, j + 1).reverse()); imp = true; }
+      }
+    }
+    const order = full.slice(1, end).map(p => p.num);
+    let line = full.map(p => [p.lat, p.lng]), m = 0, s = 0;
+    for (let i = 1; i < full.length; i++) m += kmBetween(full[i - 1], full[i]) * 1300; // ~30% más que en línea recta
+    s = m / 8.3; // ~30 km/h en ciudad
+    try {
+      const u = "https://router.project-osrm.org/route/v1/driving/" + full.map(p => p.lng.toFixed(6) + "," + p.lat.toFixed(6)).join(";") + "?geometries=geojson&overview=full";
+      const r = await fetch(u); const j = await r.json();
+      if (r.ok && j.code === "Ok" && j.routes && j.routes[0]) { line = j.routes[0].geometry.coordinates.map(c => [c[1], c[0]]); m = j.routes[0].distance; s = j.routes[0].duration; }
+    } catch {}
+    return { order, line, m, s };
+  }
+
   // ---------- ajustes, exportar ----------
   [["keyInput", "key"], ["geminiInput", "gemini"], ["startInput", "start"], ["countryInput", "country"]].forEach(([id, k]) => {
     $(id).value = store.get(k, "");
     $(id).addEventListener("change", () => store.set(k, $(id).value.trim()));
   });
+  if (store.get("country", null) === null) { $("countryInput").value = "AR"; store.set("country", "AR"); }
   $("returnChk").checked = store.get("back", false);
   $("returnChk").addEventListener("change", () => store.set("back", $("returnChk").checked));
 
