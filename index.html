@@ -838,6 +838,9 @@ ol.stops li.done .addr { text-decoration: line-through; }
     $("scanner").hidden = false; $("stage").hidden = true; $("frozen").hidden = true; $("scanControls").hidden = false;
     $("scanHint").textContent = "Encuadra la dirección dentro del recuadro y toca el botón";
     try {
+      // en la app de Android hay que pedir el permiso de cámara del teléfono antes de abrirla
+      const CAM = plug("Camera");
+      if (CAM && !stream) { const st = await CAM.requestPermissions({ permissions: ["camera"] }).catch(() => null); if (st && st.camera === "denied") throw new Error("permiso"); }
       if (!stream) stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
       $("cam").srcObject = stream; await $("cam").play().catch(() => {});
     } catch (e) {
@@ -867,12 +870,20 @@ ol.stops li.done .addr { text-decoration: line-through; }
   $("retakeBtn").addEventListener("click", resumeScan);
   $("shutter").addEventListener("click", () => {
     const c = stream && grabFrame();
-    if (!c) { $("photo").click(); return; }
+    if (!c) { if (!nativePhoto("CAMERA")) $("photo").click(); return; }
     const v = $("cam"), full = document.createElement("canvas"); full.width = v.videoWidth; full.height = v.videoHeight; full.getContext("2d").drawImage(v, 0, 0);
     $("frozen").src = c.toDataURL("image/jpeg", 0.9); $("frozen").hidden = false;
     c.toBlob(b => { if (b) { $("scanControls").hidden = true; onPhoto(b, full); } }, "image/jpeg", 0.92);
   });
-  $("galleryBtn").addEventListener("click", () => $("gallery").click());
+  $("galleryBtn").addEventListener("click", () => { if (!nativePhoto("PHOTOS")) $("gallery").click(); });
+  // App de Android: foto con la cámara o la galería del teléfono (plugin Camera), por si la vista en vivo no abre.
+  function nativePhoto(source) {
+    const CAM = plug("Camera"); if (!CAM) return false;
+    CAM.getPhoto({ source, resultType: "dataUrl", quality: 85, width: 1800, correctOrientation: true, saveToGallery: false })
+      .then(async (ph) => { const b = await (await fetch(ph.dataUrl)).blob(); $("scanControls").hidden = true; onPhoto(b); })
+      .catch((e) => { if (!/cancel/i.test(String(e && e.message || e))) toast("No se pudo usar la cámara: " + (e.message || e), true); });
+    return true;
+  }
   ["photo", "gallery"].forEach(id => $(id).addEventListener("change", e => { const f = e.target.files[0]; if (f) onPhoto(f); e.target.value = ""; }));
   $("manualBtn").addEventListener("click", () => { hidePreview(); lastRead = ""; pendingQR = ""; $("stage").classList.remove("is-verify"); $("verifyBox").hidden = true; $("refInput").value = ""; $("stage").hidden = false; $("scanControls").hidden = true; $("previewBox").hidden = true; $("lines").hidden = true; $("addrInput").focus(); });
   ["photo", "gallery"].forEach(id => $(id).addEventListener("change", () => { $("scanControls").hidden = true; }));

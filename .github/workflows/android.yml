@@ -42,7 +42,7 @@ jobs:
         run: |
           npx cap add android
           # permisos extra: cámara para el escáner
-          sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />#' android/app/src/main/AndroidManifest.xml
+          sed -i 's#<uses-permission android:name="android.permission.INTERNET" />#<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />#' android/app/src/main/AndroidManifest.xml
           grep -n "permission" android/app/src/main/AndroidManifest.xml
           # nombre del aviso fijo de ubicación
           sed -i 's#</resources>#    <string name="capacitor_background_geolocation_notification_channel_name">Ubicación del reparto</string>\n</resources>#' android/app/src/main/res/values/strings.xml

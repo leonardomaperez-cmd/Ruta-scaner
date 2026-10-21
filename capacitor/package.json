@@ -5,6 +5,7 @@
   "description": "App de Android de Ruta Escáner (se arma sola en GitHub Actions)",
   "dependencies": {
     "@capacitor/android": "7.6.9",
+    "@capacitor/camera": "7.0.5",
     "@capacitor/cli": "7.6.9",
     "@capacitor/core": "7.6.9",
     "@capacitor/local-notifications": "7.0.7",
