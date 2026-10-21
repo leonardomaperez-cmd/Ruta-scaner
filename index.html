@@ -79,6 +79,9 @@ body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--body); ov
 .pop .mic { min-height: 38px; }
 .pacts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
 #mapToast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(130px + env(safe-area-inset-bottom, 0px)); z-index: 960; background: rgba(22,32,43,.92); color: #fff; padding: 8px 14px; border-radius: 999px; font: 600 .9rem var(--body); max-width: calc(100% - 32px); text-align: center; }
+.me-dot { width: 16px; height: 16px; border-radius: 50%; background: #1a73e8; border: 3px solid #fff; box-shadow: 0 0 0 2px rgba(26,115,232,.35), 0 1px 4px rgba(0,0,0,.4); }
+.locate-btn { width: 34px; height: 34px; display: grid; place-items: center; background: #fff; border: 0; cursor: pointer; font-size: 18px; color: #16202b; }
+.locate-btn.on { color: #1a73e8; }
 .checkmap { height: 170px; border-radius: 12px; border: 1px solid var(--line); overflow: hidden; }
 /* cuenta: registro, ingreso y pago */
 #auth { position: fixed; inset: 0; z-index: 2000; background: var(--bg); color: var(--ink); overflow-y: auto; padding: 24px 16px calc(24px + env(safe-area-inset-bottom, 0px)); }
@@ -314,6 +317,41 @@ ol.stops li.done .addr { text-decoration: line-through; }
   const savedStyle = store.get("mapStyle", "osm");
   setBasemap(savedStyle); $("mapStyle").value = BASEMAPS[savedStyle] ? savedStyle : "osm";
   $("mapStyle").addEventListener("change", () => { store.set("mapStyle", $("mapStyle").value); setBasemap($("mapStyle").value); });
+
+  // ---------- mi ubicación: punto azul con el radio de precisión ----------
+  let meMarker = null, meCircle = null, meWatch = null, meFollow = false, meLast = null;
+  const meIcon = L.divIcon({ className: "", html: '<div class="me-dot"></div>', iconSize: [22, 22], iconAnchor: [11, 11] });
+  function onMe(pos) {
+    const ll = [pos.coords.latitude, pos.coords.longitude]; meLast = ll;
+    if (!meMarker) {
+      meCircle = L.circle(ll, { radius: pos.coords.accuracy, color: "#1a73e8", weight: 1, fillOpacity: .12, interactive: false }).addTo(map);
+      meMarker = L.marker(ll, { icon: meIcon, zIndexOffset: 1000, keyboard: false }).bindPopup("Estás acá").addTo(map);
+    } else { meMarker.setLatLng(ll); meCircle.setLatLng(ll).setRadius(pos.coords.accuracy); }
+    if (meFollow) { map.setView(ll, Math.max(map.getZoom(), 15)); meFollow = false; }
+  }
+  function onMeErr(e) {
+    locBtn.classList.remove("on");
+    if (e.code === 1) toast("Permite la ubicación para ver dónde estás en el mapa.", true);
+    else toast("No se pudo obtener tu ubicación.", true);
+    if (meWatch != null) { navigator.geolocation.clearWatch(meWatch); meWatch = null; }
+  }
+  function startMe(center) {
+    if (!navigator.geolocation) { toast("Este teléfono no permite ver la ubicación.", true); return; }
+    meFollow = center;
+    if (center && meLast) { map.setView(meLast, Math.max(map.getZoom(), 15)); meFollow = false; }
+    if (meWatch == null) meWatch = navigator.geolocation.watchPosition(onMe, onMeErr, { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 });
+    locBtn.classList.add("on");
+  }
+  const LocateCtl = L.Control.extend({ options: { position: "topleft" }, onAdd() {
+    const wrap = L.DomUtil.create("div", "leaflet-bar");
+    const b = L.DomUtil.create("button", "locate-btn", wrap); b.type = "button"; b.title = "Mi ubicación"; b.setAttribute("aria-label", "Mi ubicación"); b.textContent = "◎";
+    L.DomEvent.disableClickPropagation(wrap); L.DomEvent.on(b, "click", () => startMe(true));
+    return wrap;
+  } });
+  new LocateCtl().addTo(map);
+  const locBtn = document.querySelector(".locate-btn");
+  // si ya diste permiso antes, el punto aparece solo al abrir la app
+  try { navigator.permissions && navigator.permissions.query({ name: "geolocation" }).then(st => { if (st.state === "granted") startMe(false); }).catch(() => {}); } catch {}
   const layer = L.layerGroup().addTo(map);
   const pinIcon = (text, cls) => L.divIcon({ className: "", html: `<div class="pin ${cls || ""}"><span>${text}</span></div>`, iconSize: [32, 32], iconAnchor: [16, 32], popupAnchor: [0, -30] });
   const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
