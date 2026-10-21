@@ -290,6 +290,9 @@ ol.stops li.done .addr { text-decoration: line-through; }
 (() => {
   const $ = (id) => document.getElementById(id);
   const KEY = "ruta-escaner-v1";
+  // App de Android (Capacitor): GPS y voz del teléfono siguen andando con la pantalla apagada o en otra app.
+  const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  const plug = (n) => NATIVE ? (window.Capacitor.Plugins && window.Capacitor.Plugins[n]) || (window.Capacitor.registerPlugin && window.Capacitor.registerPlugin(n)) || null : null;
   const pad = (n) => String(n).padStart(4, "0");
   const store = {
     get(k, d) { try { const v = localStorage.getItem(KEY + ":" + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
@@ -350,13 +353,31 @@ ol.stops li.done .addr { text-decoration: line-through; }
     locBtn.classList.remove("on");
     if (e.code === 1) toast("Permite la ubicación para ver dónde estás en el mapa.", true);
     else toast("No se pudo obtener tu ubicación.", true);
-    if (meWatch != null) { navigator.geolocation.clearWatch(meWatch); meWatch = null; }
+    if (meWatch != null) {
+      if (NATIVE) { if (typeof meWatch === "string") plug("BackgroundGeolocation").removeWatcher({ id: meWatch }).catch(() => {}); }
+      else navigator.geolocation.clearWatch(meWatch);
+      meWatch = null;
+    }
+  }
+  function startNativeWatch() {
+    const BG = plug("BackgroundGeolocation"); if (!BG) return false;
+    meWatch = "pending";
+    BG.addWatcher({
+      backgroundTitle: "Ruta Escáner", backgroundMessage: "Sigue tu ubicación para avisarte al llegar a cada parada.",
+      requestPermissions: true, stale: false, distanceFilter: 10,
+    }, (loc, err) => {
+      if (err) { onMeErr({ code: err.code === "NOT_AUTHORIZED" ? 1 : 2 }); return; }
+      if (loc) onMe({ coords: { latitude: loc.latitude, longitude: loc.longitude, accuracy: loc.accuracy || 30 } });
+    }).then(id => { if (meWatch === "pending") meWatch = id; }).catch(() => { meWatch = null; });
+    const LN = plug("LocalNotifications"); if (LN) LN.requestPermissions().catch(() => {});
+    return true;
   }
   function startMe(center) {
-    if (!navigator.geolocation) { toast("Este teléfono no permite ver la ubicación.", true); return; }
+    if (!NATIVE && !navigator.geolocation) { toast("Este teléfono no permite ver la ubicación.", true); return; }
     meFollow = center;
     if (center && meLast) { map.setView(meLast, Math.max(map.getZoom(), 15)); meFollow = false; }
-    if (meWatch == null) meWatch = navigator.geolocation.watchPosition(onMe, onMeErr, { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 });
+    if (meWatch == null && !(NATIVE && startNativeWatch()))
+      meWatch = navigator.geolocation.watchPosition(onMe, onMeErr, { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 });
     locBtn.classList.add("on");
     keepAwake();
   }
@@ -376,7 +397,8 @@ ol.stops li.done .addr { text-decoration: line-through; }
   new LocateCtl().addTo(map);
   const locBtn = document.querySelector(".locate-btn");
   // si ya diste permiso antes, el punto aparece solo al abrir la app
-  try { navigator.permissions && navigator.permissions.query({ name: "geolocation" }).then(st => { if (st.state === "granted") startMe(false); }).catch(() => {}); } catch {}
+  if (NATIVE) startMe(false); // en la app de Android se sigue la ubicación desde que se abre
+  else try { navigator.permissions && navigator.permissions.query({ name: "geolocation" }).then(st => { if (st.state === "granted") startMe(false); }).catch(() => {}); } catch {}
   const layer = L.layerGroup().addTo(map);
   const pinIcon = (text, cls) => L.divIcon({ className: "", html: `<div class="pin ${cls || ""}"><span>${text}</span></div>`, iconSize: [32, 32], iconAnchor: [16, 32], popupAnchor: [0, -30] });
   const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -420,7 +442,10 @@ ol.stops li.done .addr { text-decoration: line-through; }
     const pend = (route ? route.order.map(byNum) : items.slice().sort((a, b) => a.num - b.num)).filter(it => it && !it.done && typeof it.lat === "number");
     return pend[0] || null;
   }
+  function stopSpeak() { const TTS = plug("TextToSpeech"); if (TTS) TTS.stop().catch(() => {}); try { window.speechSynthesis && speechSynthesis.cancel(); } catch {} }
   function speak(text) {
+    const TTS = plug("TextToSpeech");
+    if (TTS) { TTS.stop().catch(() => {}).then(() => TTS.speak({ text, lang: "es-AR", rate: 0.95, category: "playback" })).catch(() => {}); return; }
     if (!("speechSynthesis" in window)) return;
     try {
       speechSynthesis.cancel();
@@ -444,6 +469,8 @@ ol.stops li.done .addr { text-decoration: line-through; }
     $("arrive").hidden = false;
     if (navigator.vibrate) try { navigator.vibrate([200, 100, 200]); } catch {}
     speak(arriveText(it));
+    const LN = plug("LocalNotifications");
+    if (LN) LN.schedule({ notifications: [{ id: it.num, title: $("arriveCode").textContent, body: it.address + (it.ref ? " · " + it.ref : "") }] }).catch(() => {});
   }
   function checkArrival(me) {
     if (!$("arriveChk").checked) return;
@@ -452,9 +479,9 @@ ol.stops li.done .addr { text-decoration: line-through; }
     if (kmBetween(me, it) * 1000 <= lim) { announced.add(it.num); showArrival(it); }
   }
   $("arriveSay").addEventListener("click", () => { if (arriveItem) speak(arriveText(arriveItem)); });
-  $("arriveClose").addEventListener("click", () => { $("arrive").hidden = true; speechSynthesis && speechSynthesis.cancel(); });
+  $("arriveClose").addEventListener("click", () => { $("arrive").hidden = true; stopSpeak(); });
   $("arriveDone").addEventListener("click", () => {
-    $("arrive").hidden = true; try { speechSynthesis.cancel(); } catch {}
+    $("arrive").hidden = true; stopSpeak();
     if (arriveItem) { arriveItem.done = true; save(); refresh(false); toast("Nº " + pad(arriveItem.num) + " entregada"); arriveItem = null; }
     if (meLast) checkArrival({ lat: meLast[0], lng: meLast[1] });
   });

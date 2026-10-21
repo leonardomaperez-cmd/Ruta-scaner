@@ -1,0 +1,8 @@
+{
+  "appId": "ar.leo.rutaescaner",
+  "appName": "Ruta Escáner",
+  "webDir": "www",
+  "android": {
+    "useLegacyBridge": true
+  }
+}
