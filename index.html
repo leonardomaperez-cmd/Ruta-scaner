@@ -138,11 +138,13 @@ ol.stops li.done .addr { text-decoration: line-through; }
 .check { display: flex; gap: 8px; align-items: center; }
 [hidden] { display: none !important; }
 /* marcadores numerados */
-.pin { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: #f2b705; border: 2px solid #16202b; box-shadow: 0 2px 4px rgba(0,0,0,.35); }
-.pin span { transform: rotate(45deg); font: 700 13px "IBM Plex Mono", monospace; color: #1b1600; }
-.pin.start { background: #16202b; } .pin.start span { color: #fff; }
-.pin.done { background: #9aa7b4; }
-.pin.unordered { background: #fff; }
+.pin { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: linear-gradient(135deg, #3b82f6, #1d4ed8); border: 2.5px solid #fff; box-shadow: 0 3px 8px rgba(15,23,42,.45); }
+.pin span { transform: rotate(45deg); font: 700 12px "IBM Plex Sans", system-ui, sans-serif; color: #fff; letter-spacing: -.02em; }
+.pin.start { background: #0f172a; } .pin.start span { color: #fff; font-size: 15px; }
+.pin.next { background: linear-gradient(135deg, #fbbf24, #f59e0b); width: 38px; height: 38px; box-shadow: 0 0 0 6px rgba(245,158,11,.28), 0 3px 10px rgba(15,23,42,.5); }
+.pin.next span { color: #1b1600; font-size: 14px; }
+.pin.done { background: #94a3b8; opacity: .75; }
+.pin.unordered { background: #fff; border-color: #1d4ed8; } .pin.unordered span { color: #1d4ed8; }
 .leaflet-popup-content { font: 14px/1.4 "IBM Plex Sans", system-ui, sans-serif; }
 </style>
 </head>
@@ -269,6 +271,10 @@ ol.stops li.done .addr { text-decoration: line-through; }
       <span class="note">El aviso funciona con la app abierta y la pantalla encendida, y con el punto azul de tu ubicación activo (botón ◎).</span>
       <label class="label" for="mapStyle">Estilo del mapa</label>
       <select id="mapStyle">
+        <option value="fiord">Fiord (azul oscuro)</option>
+        <option value="moderno">Moderno</option>
+        <option value="suave">Suave</option>
+        <option value="noche">Noche</option>
         <option value="osm">OpenStreetMap</option>
         <option value="claro">Calles claras</option>
         <option value="oscuro">Oscuro</option>
@@ -292,6 +298,9 @@ ol.stops li.done .addr { text-decoration: line-through; }
   </section>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@maplibre/maplibre-gl-leaflet@0.0.22/leaflet-maplibre-gl.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
 <script>
 (() => {
@@ -339,17 +348,25 @@ ol.stops li.done .addr { text-decoration: line-through; }
     oscuro: ["https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", "Mapa &copy; Esri", 19, 16],
     satelite: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", "Imágenes &copy; Esri", 19],
   };
+  // Mapas modernos (vectoriales, nítidos al hacer zoom) de OpenFreeMap: gratis, sin clave y sin límite.
+  const VECTOR = { fiord: "fiord", moderno: "liberty", suave: "positron", noche: "dark" };
   let base = null;
   function setBasemap(name) {
+    if (VECTOR[name] && L.maplibreGL) {
+      if (base) map.removeLayer(base);
+      base = L.maplibreGL({ style: "https://tiles.openfreemap.org/styles/" + VECTOR[name], attribution: '<a href="https://openfreemap.org">OpenFreeMap</a> &copy; <a href="https://www.openmaptiles.org/">OpenMapTiles</a> ' + OSM }).addTo(map);
+      return;
+    }
+    if (VECTOR[name]) name = "osm";
     const ck = store.get("carto", "");
     let b = BASEMAPS[name] || BASEMAPS.osm;
     if (ck && CARTO[name]) b = [CARTO[name][0] + encodeURIComponent(ck), CARTO[name][1], CARTO[name][2]];
     if (base) map.removeLayer(base);
     base = L.tileLayer(b[0], { maxZoom: b[2], maxNativeZoom: b[3] || b[2], attribution: b[1] }).addTo(map);
   }
-  const savedStyle = store.get("mapStyle", "osm");
-  setBasemap(savedStyle); $("mapStyle").value = BASEMAPS[savedStyle] ? savedStyle : "osm";
-  $("mapStyle").addEventListener("change", () => { store.set("mapStyle", $("mapStyle").value); setBasemap($("mapStyle").value); });
+  const savedStyle = store.get("mapStyle2", "fiord");
+  setBasemap(savedStyle); $("mapStyle").value = BASEMAPS[savedStyle] || VECTOR[savedStyle] ? savedStyle : "fiord";
+  $("mapStyle").addEventListener("change", () => { store.set("mapStyle2", $("mapStyle").value); setBasemap($("mapStyle").value); });
 
   // ---------- mi ubicación: punto azul con el radio de precisión ----------
   let meMarker = null, meCircle = null, meWatch = null, meFollow = false, meLast = null;
@@ -414,7 +431,7 @@ ol.stops li.done .addr { text-decoration: line-through; }
   if (NATIVE) startMe(false); // en la app de Android se sigue la ubicación desde que se abre
   else try { navigator.permissions && navigator.permissions.query({ name: "geolocation" }).then(st => { if (st.state === "granted") startMe(false); }).catch(() => {}); } catch {}
   const layer = L.layerGroup().addTo(map);
-  const pinIcon = (text, cls) => L.divIcon({ className: "", html: `<div class="pin ${cls || ""}"><span>${text}</span></div>`, iconSize: [32, 32], iconAnchor: [16, 32], popupAnchor: [0, -30] });
+  const pinIcon = (text, cls) => { const z = cls === "next" ? 38 : 32; return L.divIcon({ className: "", html: `<div class="pin ${cls || ""}"><span>${text}</span></div>`, iconSize: [z, z], iconAnchor: [z / 2, z], popupAnchor: [0, -z + 2] }); };
   const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const gmaps = (it) => "https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=" +
     encodeURIComponent(typeof it.lat === "number" ? it.lat + "," + it.lng : it.address);
@@ -561,18 +578,18 @@ ol.stops li.done .addr { text-decoration: line-through; }
     const street = route && route.line && route.line.length > 1;
     const path = street ? route.line : chain;
     if (path.length > 1) {
-      L.polyline(path, { color: "#ffffff", weight: street ? 5 : 4, opacity: .9 }).addTo(layer);
-      L.polyline(path, { color: route ? "#1a73e8" : "#5b6774", weight: street ? 3 : 2, opacity: .95, dashArray: street ? null : "8 8" }).addTo(layer);
+      L.polyline(path, { color: "#ffffff", weight: street ? 6 : 4, opacity: .95, lineCap: "round", lineJoin: "round" }).addTo(layer);
+      L.polyline(path, { color: route ? "#2563eb" : "#64748b", weight: street ? 3.5 : 2, opacity: 1, lineCap: "round", lineJoin: "round", dashArray: street ? null : "6 8" }).addTo(layer);
     }
     if (route && route.start) {
-      L.marker([route.start.lat, route.start.lng], { icon: pinIcon("S", "start") }).bindPopup("<b>Salida</b>").addTo(layer);
+      L.marker([route.start.lat, route.start.lng], { icon: pinIcon("⌂", "start") }).bindPopup("<b>Salida</b>").addTo(layer);
       pts.push([route.start.lat, route.start.lng]);
     }
-    const lt = letters();
+    const lt = letters(), nx = nextStop();
     orderedItems().forEach((it) => {
       if (typeof it.lat !== "number") return;
       const stop = route ? route.order.indexOf(it.num) + 1 : 0;
-      const m = L.marker([it.lat, it.lng], { icon: pinIcon(stop ? stop + (lt.get(it.num) || "") : it.num, it.done ? "done" : (stop ? "" : "unordered")) });
+      const m = L.marker([it.lat, it.lng], { icon: pinIcon(stop ? stop + (lt.get(it.num) || "") : it.num, it.done ? "done" : (stop ? (it === nx ? "next" : "") : "unordered")), zIndexOffset: it === nx ? 1000 : 0 });
       m.bindPopup(() => stopPopup(it, stop, lt.get(it.num)), { minWidth: 220, maxWidth: 290 });
       m.addTo(layer);
       pts.push([it.lat, it.lng]);
