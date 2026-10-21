@@ -698,6 +698,36 @@ ol.stops li.done .addr { text-decoration: line-through; }
     if (cp >= 0) { add(cp, 3); if (lines[cp + 1] && partido(lines[cp + 1])) add(cp + 1, 2); }
     return { sel: d >= 0 ? sel : [], rank, found: d >= 0 };
   }
+  // Dirección que arma el lector del teléfono con las líneas leídas, sin tocar la pantalla (para comparar con Gemini).
+  function ocrAddress(lines) {
+    const fp = flexPick(lines);
+    const rank = (i) => fp && fp.rank.has(i) ? fp.rank.get(i) : 2.5;
+    const pick = (fp ? fp.sel : lines.map((l, i) => looksAddress(l) && !SELLER_RE.test(l) ? i : -1).filter(i => i >= 0))
+      .slice().sort((a, b) => fp ? rank(a) - rank(b) || a - b : a - b);
+    const out = [];
+    pick.forEach(i => { const c = fp ? clean(lines[i]) : lines[i]; if (!c) return; if (rank(i) === 0.5 && out.length) out[out.length - 1] += " " + c; else out.push(c); });
+    return out.join(", ");
+  }
+  // ¿Dicen lo mismo las dos lecturas? Misma altura y calle parecida (tolera letras cambiadas y abreviaturas).
+  const plain = (t) => String(t).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/\b(avenida|avda|av)\b\.?/g, "av").replace(/\b(calle|c\/|cp \d{4}|piso \S+|dpto \S+|depto \S+)\b/g, " ")
+    .replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+  const firstPart = (t) => plain(String(t).split(",")[0]);
+  function editDist(a, b) {
+    const d = Array.from({ length: b.length + 1 }, (_, j) => j);
+    for (let i = 1; i <= a.length; i++) { let prev = d[0]; d[0] = i; for (let j = 1; j <= b.length; j++) { const t = d[j]; d[j] = Math.min(d[j] + 1, d[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = t; } }
+    return d[b.length];
+  }
+  function sameAddress(a, b) {
+    const x = firstPart(a), y = firstPart(b);
+    if (!x || !y) return false;
+    const nx = (x.match(/\b\d{1,5}\b/) || [])[0], ny = (y.match(/\b\d{1,5}\b/) || [])[0];
+    if (!nx || nx !== ny) return false;
+    const sx = x.replace(/\b\d+\b/g, "").replace(/\s+/g, " ").trim(), sy = y.replace(/\b\d+\b/g, "").replace(/\s+/g, " ").trim();
+    if (!sx || !sy) return false;
+    if (sx.includes(sy) || sy.includes(sx)) return true;
+    return editDist(sx, sy) <= Math.max(2, Math.round(Math.min(sx.length, sy.length) * 0.25));
+  }
   function setLines(lines) {
     const box = $("lines"); box.textContent = "";
     if (!lines.length) { box.hidden = true; return; }
@@ -805,7 +835,21 @@ ol.stops li.done .addr { text-decoration: line-through; }
     $("verifyCode").textContent = stop ? stop + " · " + l : "Nº " + pad(it.num);
     $("verifyInfo").textContent = (stop ? "Parada " + stop + ", letra " + l + " · Nº " + pad(it.num) : "Ya guardado. Optimiza la ruta para ver su parada y letra.") + " · " + it.address;
   }
-  let pendingQR = "";
+  let pendingQR = "", readToken = 0;
+  // Cuando el lector del teléfono termina, avisa si coincide con Gemini o muestra lo que leyó para elegir.
+  async function crossCheck(token, gAddr, ocrP, say) {
+    const lines = await Promise.race([ocrP, new Promise(r => setTimeout(() => r(null), 30000))]);
+    if (token !== readToken || $("stage").hidden || $("addrInput").value.trim() !== gAddr) return;
+    const o = lines && lines.length ? ocrAddress(lines) : "";
+    if (!o) { say("Leída por Gemini (el lector del teléfono no la encontró). Revísala y guárdala.", "ok"); return; }
+    if (sameAddress(gAddr, o)) { say("✓✓ Confirmada: Gemini y el lector del teléfono leyeron lo mismo.", "ok"); return; }
+    say("Ojo: el lector del teléfono leyó otra cosa. Mirá la etiqueta y elegí:", "err");
+    const st = $("scanStatus"), b = document.createElement("button");
+    b.type = "button"; b.className = "mini"; b.style.cssText = "display:block;margin-top:6px;text-align:left";
+    b.textContent = "Usar «" + o + "»";
+    b.addEventListener("click", () => { $("addrInput").value = lastRead = o; schedulePreview(); say("Usando lo que leyó el lector del teléfono. Revísala y guárdala.", ""); });
+    st.append(b);
+  }
   let lastRead = ""; // lo que leyó el escáner, para aprender si el usuario lo corrige
   async function onPhoto(file, qrSrc) {
     hidePreview();
@@ -822,19 +866,28 @@ ol.stops li.done .addr { text-decoration: line-through; }
     }
     const gkey = $("geminiInput").value.trim();
     let why = gkey ? "" : "Sin clave de Gemini: leída en el teléfono. ";
+    const token = ++readToken;
+    // Doble lectura: el lector del teléfono lee al mismo tiempo que Gemini y después se comparan.
+    const ocrP = shrink(file).then(img => readText(img, () => {})).catch(() => null);
     if (gkey) {
       try {
-        say("Gemini está leyendo la dirección…");
+        say("Gemini y el lector del teléfono están leyendo la dirección…");
         const got = await readWithGemini(await shrink(file, 1600, false), gkey);
         $("saveBtn").disabled = false;
-        if (got) { $("addrInput").value = lastRead = got.address; $("refInput").value = got.ref; schedulePreview(); say("Dirección leída por Gemini. Revísala y guárdala.", "ok"); return; }
+        if (got) {
+          $("addrInput").value = lastRead = got.address; $("refInput").value = got.ref; schedulePreview();
+          say("Leída por Gemini. Comparando con el lector del teléfono…", "ok");
+          crossCheck(token, got.address, ocrP, say);
+          return;
+        }
         why = "Gemini no encontró la dirección: leída en el teléfono. ";
       } catch (e) { why = "Gemini falló (" + (e.message || e) + "): leída en el teléfono. "; }
       say(why + "Leyendo…");
     }
     try {
-      const img = await shrink(file);
-      const lines = await readText(img, p => say(why + "Leyendo… " + Math.round(p * 100) + "%"));
+      say(why + "Leyendo…");
+      const lines = await ocrP;
+      if (!lines) throw new Error("no se pudo cargar el lector");
       if (!lines.length) { say("No se encontró texto. Prueba más cerca y con buena luz.", "err"); return; }
       setLines(lines); lastRead = $("addrInput").value.trim();
       say(why + "Revisa la dirección y guárdala.", gkey ? "err" : "");
