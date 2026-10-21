@@ -358,7 +358,15 @@ ol.stops li.done .addr { text-decoration: line-through; }
     if (center && meLast) { map.setView(meLast, Math.max(map.getZoom(), 15)); meFollow = false; }
     if (meWatch == null) meWatch = navigator.geolocation.watchPosition(onMe, onMeErr, { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 });
     locBtn.classList.add("on");
+    keepAwake();
   }
+  // Mantener la pantalla encendida mientras se sigue la ubicación (el aviso por voz necesita la app abierta).
+  let wakeLock = null;
+  async function keepAwake() {
+    if (!("wakeLock" in navigator) || wakeLock) return;
+    try { wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release", () => { wakeLock = null; }); } catch {}
+  }
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && meWatch != null) keepAwake(); });
   const LocateCtl = L.Control.extend({ options: { position: "topleft" }, onAdd() {
     const wrap = L.DomUtil.create("div", "leaflet-bar");
     const b = L.DomUtil.create("button", "locate-btn", wrap); b.type = "button"; b.title = "Mi ubicación"; b.setAttribute("aria-label", "Mi ubicación"); b.textContent = "◎";
