@@ -82,6 +82,11 @@ body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--body); ov
 .me-dot { width: 16px; height: 16px; border-radius: 50%; background: #1a73e8; border: 3px solid #fff; box-shadow: 0 0 0 2px rgba(26,115,232,.35), 0 1px 4px rgba(0,0,0,.4); }
 .locate-btn { width: 34px; height: 34px; display: grid; place-items: center; background: #fff; border: 0; cursor: pointer; font-size: 18px; color: #16202b; }
 .locate-btn.on { color: #1a73e8; }
+#arrive { position: fixed; left: 12px; right: 12px; top: calc(56px + env(safe-area-inset-top, 0px)); z-index: 970; background: #16202b; color: #fff; border-radius: 16px; padding: 14px; box-shadow: 0 8px 24px rgba(0,0,0,.4); display: grid; gap: 8px; max-width: 520px; margin: 0 auto; }
+#arrive .big { font: 700 1.6rem/1.1 var(--display); letter-spacing: .02em; color: #f5c32c; }
+#arrive .ref { font-style: italic; }
+#arrive .row { display: flex; gap: 8px; }
+#arrive .row .btn { flex: 1; min-height: 42px; padding: 8px; }
 .checkmap { height: 170px; border-radius: 12px; border: 1px solid var(--line); overflow: hidden; }
 /* cuenta: registro, ingreso y pago */
 #auth { position: fixed; inset: 0; z-index: 2000; background: var(--bg); color: var(--ink); overflow-y: auto; padding: 24px 16px calc(24px + env(safe-area-inset-bottom, 0px)); }
@@ -181,6 +186,13 @@ ol.stops li.done .addr { text-decoration: line-through; }
 </div>
 
 <div id="mapToast" role="status" hidden></div>
+<div id="arrive" role="alert" hidden>
+  <div>Llegando a la próxima parada</div>
+  <div class="big" id="arriveCode"></div>
+  <div id="arriveAddr"></div>
+  <div class="ref" id="arriveRef"></div>
+  <div class="row"><button class="btn" id="arriveSay" type="button">🔊 Repetir</button><button class="btn btn-primary" id="arriveDone" type="button">Entregada</button><button class="btn" id="arriveClose" type="button">Cerrar</button></div>
+</div>
 <div class="scanner" id="scanner" hidden>
   <video id="cam" playsinline muted autoplay></video>
   <img id="frozen" class="frozen" alt="" hidden>
@@ -248,6 +260,10 @@ ol.stops li.done .addr { text-decoration: line-through; }
       <input id="startInput" type="text" placeholder="Ej.: Depósito, Av. Rivadavia 5000, CABA">
       <label class="check"><input id="returnChk" type="checkbox"> Volver al punto de partida al final</label>
       <label class="check"><input id="zaChk" type="checkbox"> Letras de la Z a la A (la primera parada lleva la última letra)</label>
+      <label class="check"><input id="arriveChk" type="checkbox"> Avisarme con voz al llegar a la próxima parada</label>
+      <label class="label" for="arriveDist">Distancia del aviso (metros)</label>
+      <input id="arriveDist" type="text" inputmode="numeric" placeholder="150">
+      <span class="note">El aviso funciona con la app abierta y la pantalla encendida, y con el punto azul de tu ubicación activo (botón ◎).</span>
       <label class="label" for="mapStyle">Estilo del mapa</label>
       <select id="mapStyle">
         <option value="osm">OpenStreetMap</option>
@@ -328,6 +344,7 @@ ol.stops li.done .addr { text-decoration: line-through; }
       meMarker = L.marker(ll, { icon: meIcon, zIndexOffset: 1000, keyboard: false }).bindPopup("Estás acá").addTo(map);
     } else { meMarker.setLatLng(ll); meCircle.setLatLng(ll).setRadius(pos.coords.accuracy); }
     if (meFollow) { map.setView(ll, Math.max(map.getZoom(), 15)); meFollow = false; }
+    checkArrival({ lat: ll[0], lng: ll[1] });
   }
   function onMeErr(e) {
     locBtn.classList.remove("on");
@@ -389,6 +406,51 @@ ol.stops li.done .addr { text-decoration: line-through; }
     if (route) route.order = route.order.filter(n => n !== it.num);
     save(); refresh(false);
   }
+  // ---------- aviso al llegar: mensaje en pantalla y voz con la referencia ----------
+  const announced = new Set(); let arriveItem = null;
+  function nextStop() {
+    const pend = (route ? route.order.map(byNum) : items.slice().sort((a, b) => a.num - b.num)).filter(it => it && !it.done && typeof it.lat === "number");
+    return pend[0] || null;
+  }
+  function speak(text) {
+    if (!("speechSynthesis" in window)) return;
+    try {
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text); u.lang = "es-AR"; u.rate = 0.95;
+      const v = speechSynthesis.getVoices().find(x => /^es(-|_)AR/i.test(x.lang)) || speechSynthesis.getVoices().find(x => /^es/i.test(x.lang));
+      if (v) u.voice = v;
+      speechSynthesis.speak(u);
+    } catch {}
+  }
+  function arriveText(it) {
+    const stop = route ? route.order.indexOf(it.num) + 1 : 0, l = letters().get(it.num);
+    return "Llegando a " + (stop ? "la parada " + stop + (l ? ", letra " + l.split("").join(" ") : "") + ". " : "la parada. ") +
+      "Paquete número " + it.num + ". " + (it.ref ? "Referencia: " + it.ref + "." : "Sin referencia.");
+  }
+  function showArrival(it) {
+    arriveItem = it;
+    const stop = route ? route.order.indexOf(it.num) + 1 : 0, l = letters().get(it.num);
+    $("arriveCode").textContent = (stop ? "Parada " + stop + (l ? " · " + l : "") + " · " : "") + "Nº " + pad(it.num);
+    $("arriveAddr").textContent = it.address;
+    $("arriveRef").textContent = it.ref ? "🗒 " + it.ref : "Sin referencia";
+    $("arrive").hidden = false;
+    if (navigator.vibrate) try { navigator.vibrate([200, 100, 200]); } catch {}
+    speak(arriveText(it));
+  }
+  function checkArrival(me) {
+    if (!$("arriveChk").checked) return;
+    const it = nextStop(); if (!it || announced.has(it.num)) return;
+    const lim = Math.max(20, Number($("arriveDist").value) || 150);
+    if (kmBetween(me, it) * 1000 <= lim) { announced.add(it.num); showArrival(it); }
+  }
+  $("arriveSay").addEventListener("click", () => { if (arriveItem) speak(arriveText(arriveItem)); });
+  $("arriveClose").addEventListener("click", () => { $("arrive").hidden = true; speechSynthesis && speechSynthesis.cancel(); });
+  $("arriveDone").addEventListener("click", () => {
+    $("arrive").hidden = true; try { speechSynthesis.cancel(); } catch {}
+    if (arriveItem) { arriveItem.done = true; save(); refresh(false); toast("Nº " + pad(arriveItem.num) + " entregada"); arriveItem = null; }
+    if (meLast) checkArrival({ lat: meLast[0], lng: meLast[1] });
+  });
+
   // Ventana al tocar un pin: datos de la parada y botones para navegar, editar, marcar entregada o eliminar.
   function stopPopup(it, stop, letter) {
     const d = document.createElement("div"); d.className = "pop";
@@ -1072,6 +1134,10 @@ ol.stops li.done .addr { text-decoration: line-through; }
   $("returnChk").addEventListener("change", () => store.set("back", $("returnChk").checked));
   $("zaChk").checked = store.get("za", true);
   $("zaChk").addEventListener("change", () => { store.set("za", $("zaChk").checked); refresh(false); });
+  $("arriveChk").checked = store.get("arrive", true);
+  $("arriveChk").addEventListener("change", () => store.set("arrive", $("arriveChk").checked));
+  $("arriveDist").value = store.get("arriveDist", "150");
+  $("arriveDist").addEventListener("change", () => store.set("arriveDist", $("arriveDist").value.trim()));
 
   $("clearDone").addEventListener("click", () => {
     const n = items.filter(i => i.done).length; if (!n) { return; }
