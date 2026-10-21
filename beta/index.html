@@ -271,6 +271,7 @@ ol.stops li.done .addr { text-decoration: line-through; }
       <span class="note">El aviso funciona con la app abierta y la pantalla encendida, y con el punto azul de tu ubicación activo (botón ◎).</span>
       <label class="label" for="mapStyle">Estilo del mapa</label>
       <select id="mapStyle">
+        <option value="fiord">Fiord (azul oscuro)</option>
         <option value="moderno">Moderno</option>
         <option value="suave">Suave</option>
         <option value="noche">Noche</option>
@@ -348,7 +349,7 @@ ol.stops li.done .addr { text-decoration: line-through; }
     satelite: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", "Imágenes &copy; Esri", 19],
   };
   // Mapas modernos (vectoriales, nítidos al hacer zoom) de OpenFreeMap: gratis, sin clave y sin límite.
-  const VECTOR = { moderno: "liberty", suave: "positron", noche: "dark" };
+  const VECTOR = { fiord: "fiord", moderno: "liberty", suave: "positron", noche: "dark" };
   let base = null;
   function setBasemap(name) {
     if (VECTOR[name] && L.maplibreGL) {
@@ -363,9 +364,9 @@ ol.stops li.done .addr { text-decoration: line-through; }
     if (base) map.removeLayer(base);
     base = L.tileLayer(b[0], { maxZoom: b[2], maxNativeZoom: b[3] || b[2], attribution: b[1] }).addTo(map);
   }
-  const savedStyle = store.get("mapStyleBeta", "moderno");
-  setBasemap(savedStyle); $("mapStyle").value = BASEMAPS[savedStyle] || VECTOR[savedStyle] ? savedStyle : "moderno";
-  $("mapStyle").addEventListener("change", () => { store.set("mapStyleBeta", $("mapStyle").value); setBasemap($("mapStyle").value); });
+  const savedStyle = store.get("mapStyleBeta2", "fiord");
+  setBasemap(savedStyle); $("mapStyle").value = BASEMAPS[savedStyle] || VECTOR[savedStyle] ? savedStyle : "fiord";
+  $("mapStyle").addEventListener("change", () => { store.set("mapStyleBeta2", $("mapStyle").value); setBasemap($("mapStyle").value); });
 
   // ---------- mi ubicación: punto azul con el radio de precisión ----------
   let meMarker = null, meCircle = null, meWatch = null, meFollow = false, meLast = null;
