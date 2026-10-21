@@ -1,0 +1,1312 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#16202b">
+<title>(Prueba) Ruta Escáner</title>
+<link rel="icon" href="../img/favicon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="../img/apple-touch-icon.png">
+<link rel="manifest" href="../manifest.webmanifest">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: mapa arriba (como Zeo/Circuit), panel con pestañas abajo: Escanear · Paradas · Ajustes */
+:root {
+  --bg: #eef1f4; --surface: #ffffff; --ink: #16202b; --muted: #5b6774; --line: #d3d9e0;
+  --accent: #f2b705; --accent-ink: #1b1600; --ok: #1f7a4d; --bad: #b3261e;
+  --display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0f151c; --surface: #18212b; --ink: #e8edf2; --muted: #9aa7b4; --line: #2b3744; --accent: #f5c32c; --ok: #58c08b; --bad: #ff8a80; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--body); overflow: hidden; }
+#map { position: fixed; inset: 0; background: var(--line); z-index: 1; }
+.wrap { max-width: 640px; margin: 0 auto; display: grid; gap: 14px; }
+/* burbujas flotantes */
+.fabs { position: fixed; left: 0; right: 0; bottom: calc(42px + env(safe-area-inset-bottom, 0px)); z-index: 500; display: flex; justify-content: center; align-items: center; gap: 22px; pointer-events: none; }
+.fab { pointer-events: auto; position: relative; width: 58px; height: 58px; border-radius: 50%; border: 0; background: var(--surface); color: var(--ink); box-shadow: 0 4px 14px rgba(0,0,0,.35); display: grid; place-items: center; cursor: pointer; }
+.fab svg { width: 26px; height: 26px; }
+.fab.big { width: 76px; height: 76px; background: var(--accent); color: var(--accent-ink); }
+.fab.big svg { width: 34px; height: 34px; }
+.fab .cnt { position: absolute; top: -4px; right: -4px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; background: var(--ink); color: var(--bg); font: 700 12px/22px var(--mono); }
+.fab .cnt:empty { display: none; }
+.fab-label { position: absolute; top: calc(100% + 4px); left: 50%; transform: translateX(-50%); font: 700 .7rem var(--display); letter-spacing: .06em; text-transform: uppercase; color: #fff; text-shadow: 0 1px 3px #000; white-space: nowrap; }
+.chip { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: 64px; right: 12px; z-index: 500; display: flex; justify-content: flex-end; pointer-events: none; }
+.chip span { pointer-events: auto; background: var(--surface); color: var(--ink); font: 600 .9rem var(--mono); padding: 6px 12px; border-radius: 18px; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+.chip span:empty { display: none; }
+/* paneles que suben desde abajo */
+.backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 900; }
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 950; max-height: 82vh; overflow-y: auto; background: var(--bg); border-radius: 20px 20px 0 0; padding-inline: 16px; padding-block: 0 calc(24px + env(safe-area-inset-bottom, 0px)); box-shadow: 0 -6px 24px rgba(0,0,0,.35); }
+@media (prefers-reduced-motion: no-preference) { .sheet { animation: up .22s ease-out; } @keyframes up { from { transform: translateY(40px); opacity: .4; } } }
+.sheet-head { position: sticky; top: 0; z-index: 2; background: var(--bg); display: flex; align-items: center; justify-content: space-between; padding-block: 14px 10px; max-width: 640px; margin: 0 auto; }
+.sheet-head::before { content: ""; position: absolute; top: 6px; left: 50%; width: 40px; height: 4px; margin-left: -20px; border-radius: 2px; background: var(--line); }
+.sheet-head h2 { margin: 0; font: 700 1.5rem var(--display); text-transform: uppercase; letter-spacing: .03em; }
+.x { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-size: 1.1rem; cursor: pointer; }
+/* escáner con cámara */
+.scanner { position: fixed; inset: 0; z-index: 1000; background: #000; color: #fff; }
+.scanner video, .scanner .frozen { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.frame { position: absolute; left: 7%; right: 7%; top: 22%; aspect-ratio: 3 / 2; border-radius: 14px; box-shadow: 0 0 0 100vmax rgba(0,0,0,.55); }
+.frame i { position: absolute; width: 34px; height: 34px; border: 4px solid var(--accent); }
+.frame .tl { top: -3px; left: -3px; border-right: 0; border-bottom: 0; border-radius: 14px 0 0 0; }
+.frame .tr { top: -3px; right: -3px; border-left: 0; border-bottom: 0; border-radius: 0 14px 0 0; }
+.frame .bl { bottom: -3px; left: -3px; border-right: 0; border-top: 0; border-radius: 0 0 0 14px; }
+.frame .br { bottom: -3px; right: -3px; border-left: 0; border-top: 0; border-radius: 0 0 14px 0; }
+.scan-top { position: absolute; top: calc(14px + env(safe-area-inset-top, 0px)); left: 16px; right: 16px; display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; }
+.scan-top p { margin: 0; font: 600 1rem var(--body); text-shadow: 0 1px 4px #000; }
+.scan-top .x { background: rgba(0,0,0,.5); color: #fff; border-color: rgba(255,255,255,.4); flex: none; }
+.scan-bottom { position: absolute; left: 0; right: 0; bottom: calc(28px + env(safe-area-inset-bottom, 0px)); display: flex; justify-content: center; align-items: center; gap: 34px; }
+.shutter { width: 78px; height: 78px; border-radius: 50%; border: 5px solid #fff; background: var(--accent); cursor: pointer; }
+.side { width: 56px; height: 56px; border-radius: 50%; border: 0; background: rgba(255,255,255,.18); color: #fff; font: 600 .72rem var(--body); cursor: pointer; display: grid; place-items: center; }
+.side svg { width: 24px; height: 24px; }
+.scan-msg { position: absolute; left: 16px; right: 16px; bottom: calc(130px + env(safe-area-inset-bottom, 0px)); text-align: center; font-weight: 600; text-shadow: 0 1px 4px #000; }
+#stage { position: absolute; left: 0; right: 0; bottom: 0; max-height: 72vh; overflow-y: auto; background: var(--bg); color: var(--ink); border-radius: 20px 20px 0 0; padding-inline: 16px; padding-block: 16px calc(20px + env(safe-area-inset-bottom, 0px)); display: grid; gap: 10px; }
+.label { font-size: .72rem; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); font-weight: 600; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: grid; gap: 12px; }
+.btn { font: 600 1rem var(--body); border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 12px 16px; cursor: pointer; min-height: 46px; text-align: center; text-decoration: none; display: block; }
+.btn-primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; font: 700 1.3rem var(--display); text-transform: uppercase; letter-spacing: .04em; padding: 14px; }
+.btn[disabled] { opacity: .5; }
+.refrow { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.mic { min-width: 48px; font-size: 1.3rem; padding: 0 12px; }
+.mic.on { background: var(--bad); color: #fff; border-color: var(--bad); }
+.pop { display: grid; gap: 6px; font: 500 14px/1.35 var(--body); color: #16202b; min-width: 210px; }
+.pop .pref { font-style: italic; } .pop .muted { color: #5b6774; font-style: normal; }
+.pop textarea, .pop input { background: #fff; color: #16202b; border-color: #c8d0d8; font-size: .95rem; padding: 8px; }
+.pop .mini { color: #16202b; border-color: #c8d0d8; }
+.pop .mic { min-height: 38px; }
+.pacts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+#mapToast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(130px + env(safe-area-inset-bottom, 0px)); z-index: 960; background: rgba(22,32,43,.92); color: #fff; padding: 8px 14px; border-radius: 999px; font: 600 .9rem var(--body); max-width: calc(100% - 32px); text-align: center; }
+.me-dot { width: 16px; height: 16px; border-radius: 50%; background: #1a73e8; border: 3px solid #fff; box-shadow: 0 0 0 2px rgba(26,115,232,.35), 0 1px 4px rgba(0,0,0,.4); }
+.locate-btn { width: 34px; height: 34px; display: grid; place-items: center; background: #fff; border: 0; cursor: pointer; font-size: 18px; color: #16202b; }
+.locate-btn.on { color: #1a73e8; }
+#arrive { position: fixed; left: 12px; right: 12px; top: calc(56px + env(safe-area-inset-top, 0px)); z-index: 970; background: #16202b; color: #fff; border-radius: 16px; padding: 14px; box-shadow: 0 8px 24px rgba(0,0,0,.4); display: grid; gap: 8px; max-width: 520px; margin: 0 auto; }
+#arrive .big { font: 700 1.6rem/1.1 var(--display); letter-spacing: .02em; color: #f5c32c; }
+#arrive .ref { font-style: italic; }
+#arrive .row { display: flex; gap: 8px; }
+#arrive .row .btn { flex: 1; min-height: 42px; padding: 8px; }
+.checkmap { height: 170px; border-radius: 12px; border: 1px solid var(--line); overflow: hidden; }
+/* cuenta: registro, ingreso y pago */
+#auth { position: fixed; inset: 0; z-index: 2000; background: var(--bg); color: var(--ink); overflow-y: auto; padding: 24px 16px calc(24px + env(safe-area-inset-bottom, 0px)); }
+#auth .wrap { max-width: 420px; }
+#auth h1 { margin: 8px 0 0; font: 700 1.8rem var(--display); text-transform: uppercase; letter-spacing: .03em; }
+.tabs2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.tabs2 button.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.btn:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; }
+.row > * { flex: 1 1 140px; }
+textarea, select, input[type=text], input[type=password], input[type=search] { width: 100%; font: 500 1rem/1.4 var(--body); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; min-width: 0; }
+textarea { resize: vertical; min-height: 70px; }
+.preview { display: grid; grid-template-columns: 84px 1fr; gap: 12px; align-items: start; }
+.preview img { width: 84px; height: 84px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
+.status { color: var(--muted); font-size: .92rem; min-width: 0; }
+.status.err { color: var(--bad); }
+.status.ok { color: var(--ok); font-weight: 600; }
+.lines { display: grid; gap: 6px; }
+.lines button { text-align: left; font: 500 .92rem var(--body); background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; cursor: pointer; }
+.lines button.on { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.assign { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.tag { font: 600 1.5rem var(--mono); background: var(--ink); color: var(--bg); border-radius: 8px; padding: 4px 12px; font-variant-numeric: tabular-nums; }
+.assign .btn { flex: 1 1 160px; }
+.summary { font: 600 1.1rem var(--mono); font-variant-numeric: tabular-nums; }
+ol.stops { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+ol.stops li { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: start; padding: 10px 12px; border-top: 1px solid var(--line); }
+ol.stops li:first-child { border-top: 0; }
+ol.stops li.done { opacity: .55; }
+ol.stops li.done .addr { text-decoration: line-through; }
+.badge { display: grid; place-items: center; min-width: 2.2em; height: 2.2em; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font: 700 .95rem var(--mono); border: 2px solid var(--ink); }
+.ord { display: flex; gap: 4px; align-items: center; }
+.letter { display: grid; place-items: center; min-width: 2em; height: 2.2em; padding: 0 4px; border-radius: 8px; background: var(--ink); color: var(--bg); font: 700 .95rem var(--mono); }
+.verify { text-align: center; padding: 14px; border: 2px solid var(--ink); border-radius: 14px; }
+.verify b { display: block; font: 700 2.6rem/1.1 var(--mono); }
+.verify span { color: var(--muted); }
+#stage.is-verify .newonly { display: none !important; }
+.badge.none { background: var(--bg); color: var(--muted); border-color: var(--line); }
+.addr { min-width: 0; overflow-wrap: anywhere; }
+.addr small { display: block; color: var(--muted); font: 500 .8rem var(--mono); }
+.addr small.ref { font: italic 500 .85rem var(--body); margin-top: 2px; }
+.acts { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; max-width: 9.5rem; }
+.mini { background: none; border: 1px solid var(--line); color: var(--ink); font: 500 .8rem var(--body); border-radius: 8px; padding: 6px 8px; cursor: pointer; text-decoration: none; }
+.mini.confirm { color: var(--bad); border-color: var(--bad); font-weight: 600; }
+.empty { padding: 20px 14px; text-align: center; color: var(--muted); display: block !important; }
+.note { color: var(--muted); font-size: .82rem; }
+.check { display: flex; gap: 8px; align-items: center; }
+[hidden] { display: none !important; }
+/* marcadores numerados */
+.pin { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: linear-gradient(135deg, #3b82f6, #1d4ed8); border: 2.5px solid #fff; box-shadow: 0 3px 8px rgba(15,23,42,.45); }
+.pin span { transform: rotate(45deg); font: 700 12px "IBM Plex Sans", system-ui, sans-serif; color: #fff; letter-spacing: -.02em; }
+.pin.start { background: #0f172a; } .pin.start span { color: #fff; font-size: 15px; }
+.pin.next { background: linear-gradient(135deg, #fbbf24, #f59e0b); width: 38px; height: 38px; box-shadow: 0 0 0 6px rgba(245,158,11,.28), 0 3px 10px rgba(15,23,42,.5); }
+.pin.next span { color: #1b1600; font-size: 14px; }
+.pin.done { background: #94a3b8; opacity: .75; }
+.pin.unordered { background: #fff; border-color: #1d4ed8; } .pin.unordered span { color: #1d4ed8; }
+.leaflet-popup-content { font: 14px/1.4 "IBM Plex Sans", system-ui, sans-serif; }
+</style>
+</head>
+<body>
+<div id="map" role="region" aria-label="Mapa de paradas"></div>
+<div class="chip"><span id="chipSummary"></span></div>
+
+<nav class="fabs" aria-label="Menú">
+  <button class="fab" type="button" data-p="p-stops" aria-label="Paradas">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4" cy="6" r="1.5"/><circle cx="4" cy="12" r="1.5"/><circle cx="4" cy="18" r="1.5"/></svg>
+    <span class="cnt" id="countTab"></span><span class="fab-label">Paradas</span>
+  </button>
+  <button class="fab big" type="button" id="scanBtn" aria-label="Escanear dirección">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M7 10h10M7 14h7"/></svg>
+    <span class="fab-label">Escanear</span>
+  </button>
+  <button class="fab" type="button" data-p="p-set" aria-label="Ajustes">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    <span class="fab-label">Ajustes</span>
+  </button>
+</nav>
+
+<div id="auth" hidden>
+  <div class="wrap">
+    <h1>Ruta Escáner</h1>
+    <div class="card" id="authForm">
+      <div class="tabs2"><button class="btn on" id="tabIn" type="button">Entrar</button><button class="btn" id="tabUp" type="button">Crear cuenta</button></div>
+      <label class="label" for="authEmail">Correo (es tu usuario)</label>
+      <input id="authEmail" type="text" inputmode="email" autocomplete="username" placeholder="tucorreo@gmail.com">
+      <label class="label" for="authPass">Contraseña</label>
+      <input id="authPass" type="password" autocomplete="current-password" placeholder="Mínimo 6 caracteres">
+      <button class="btn btn-primary" id="authGo" type="button">Entrar</button>
+      <div class="status" id="authMsg" role="status"></div>
+    </div>
+    <div class="card" id="authPay" hidden>
+      <b id="authWho"></b>
+      <span>Tu cuenta todavía no está activa. Para usar la app, hacé el pago. Cuando se acredite, se activa tu cuenta.</span>
+      <a class="btn btn-primary payLink" target="_blank" rel="noopener">Pagar</a>
+      <button class="btn" id="authCheck" type="button">Ya pagué, revisar</button>
+      <button class="btn" id="authOut" type="button">Salir</button>
+      <div class="status" id="authPayMsg" role="status"></div>
+    </div>
+  </div>
+</div>
+
+<div id="mapToast" role="status" hidden></div>
+<div id="arrive" role="alert" hidden>
+  <div>Llegando a la próxima parada</div>
+  <div class="big" id="arriveCode"></div>
+  <div id="arriveAddr"></div>
+  <div class="ref" id="arriveRef"></div>
+  <div class="row"><button class="btn" id="arriveSay" type="button">🔊 Repetir</button><button class="btn btn-primary" id="arriveDone" type="button">Entregada</button><button class="btn" id="arriveClose" type="button">Cerrar</button></div>
+</div>
+<div class="scanner" id="scanner" hidden>
+  <video id="cam" playsinline muted autoplay></video>
+  <img id="frozen" class="frozen" alt="" hidden>
+  <div class="frame" id="frame"><i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i></div>
+  <div class="scan-top"><p id="scanHint">Encuadra la dirección dentro del recuadro y toca el botón</p><button class="x" id="closeScan" type="button" aria-label="Cerrar escáner">✕</button></div>
+  <div class="scan-msg" id="toast" role="status" hidden></div>
+  <div class="scan-bottom" id="scanControls">
+    <button class="side" id="galleryBtn" type="button" aria-label="Elegir foto de la galería"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></button>
+    <button class="shutter" id="shutter" type="button" aria-label="Tomar foto"></button>
+    <button class="side" id="manualBtn" type="button" aria-label="Escribir a mano"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button>
+  </div>
+  <input id="photo" type="file" accept="image/*" capture="environment" hidden>
+  <input id="gallery" type="file" accept="image/*" hidden>
+  <div id="stage" hidden>
+    <div class="preview" id="previewBox" hidden>
+      <img id="previewImg" alt="Foto escaneada">
+      <div class="status" id="scanStatus" role="status"></div>
+    </div>
+    <div class="verify" id="verifyBox" hidden><span>Código de verificación</span><b id="verifyCode"></b><span id="verifyInfo"></span></div>
+    <div class="lines newonly" id="lines" hidden></div>
+    <label class="label newonly" for="addrInput">Dirección</label>
+    <textarea class="newonly" id="addrInput" placeholder="Ej.: Av. Corrientes 1234, CABA"></textarea>
+    <label class="label newonly" for="refInput">Referencia (opcional)</label>
+    <div class="refrow newonly"><input id="refInput" type="text" placeholder="Ej.: portón negro, timbre 2"><button class="btn mic" id="micBtn" type="button" aria-label="Dictar la referencia" hidden>🎤</button></div>
+    <span class="note newonly" id="micInfo" hidden></span>
+    <div class="checkmap newonly" id="checkMap" hidden></div>
+    <span class="note newonly" id="checkInfo" hidden></span>
+    <div class="assign newonly">
+      <div class="tag" id="nextTag">0001</div>
+      <button id="saveBtn" class="btn btn-primary" type="button">Guardar</button>
+    </div>
+    <button id="retakeBtn" class="btn" type="button">Volver a escanear</button>
+  </div>
+</div>
+
+<div class="backdrop" id="backdrop" hidden></div>
+  <section id="p-stops" class="sheet" hidden aria-label="Paradas">
+   <div class="sheet-head"><h2>Paradas</h2><button class="x" type="button" data-close aria-label="Cerrar">✕</button></div>
+   <div class="wrap">
+    <div class="card">
+      <button id="optBtn" class="btn btn-primary" type="button">Optimizar ruta</button>
+      <div class="status" id="optStatus" role="status"></div>
+      <div class="summary" id="summary" hidden></div>
+      <a id="navAll" class="btn" target="_blank" rel="noopener" hidden>Navegar en Google Maps (próximas 10)</a>
+    </div>
+    <ol class="stops" id="stops"></ol>
+    <div class="row">
+      <button id="exportBtn" class="btn" type="button">Exportar CSV</button>
+      <button id="clearDone" class="btn" type="button">Quitar entregadas</button>
+    </div>
+   </div>
+  </section>
+
+  <section id="p-set" class="sheet" hidden aria-label="Ajustes">
+   <div class="sheet-head"><h2>Ajustes</h2><button class="x" type="button" data-close aria-label="Cerrar">✕</button></div>
+   <div class="wrap">
+    <div class="card">
+      <label class="label" for="keyInput">Clave de TomTom (opcional)</label>
+      <input id="keyInput" type="password" autocomplete="off" placeholder="Pega tu clave (API key)">
+      <span class="note">Sin clave, la app usa mapas gratuitos de OpenStreetMap para ubicar y ordenar las paradas, sin cuenta. Con una clave de TomTom (gratis en developer.tomtom.com) la ruta tiene en cuenta el tráfico. Se guarda solo en este teléfono.</span>
+      <label class="label" for="geminiInput">Clave de Gemini (lectura con inteligencia artificial)</label>
+      <input id="geminiInput" type="password" autocomplete="off" placeholder="Pega tu clave de Google AI Studio">
+      <span class="note">Opcional y gratis en aistudio.google.com. Con ella, la foto la lee Gemini y saca solo la dirección del destinatario. Sin ella, se lee en el teléfono. En el plan gratuito Google puede usar las fotos para mejorar sus productos.</span>
+      <label class="label" for="startInput">Punto de partida</label>
+      <input id="startInput" type="text" placeholder="Ej.: Depósito, Av. Rivadavia 5000, CABA">
+      <label class="check"><input id="returnChk" type="checkbox"> Volver al punto de partida al final</label>
+      <label class="check"><input id="zaChk" type="checkbox"> Letras de la Z a la A (la primera parada lleva la última letra)</label>
+      <label class="check"><input id="arriveChk" type="checkbox"> Avisarme con voz al llegar a la próxima parada</label>
+      <label class="label" for="arriveDist">Distancia del aviso (metros)</label>
+      <input id="arriveDist" type="text" inputmode="numeric" placeholder="150">
+      <span class="note">El aviso funciona con la app abierta y la pantalla encendida, y con el punto azul de tu ubicación activo (botón ◎).</span>
+      <label class="label" for="mapStyle">Estilo del mapa</label>
+      <select id="mapStyle">
+        <option value="moderno">Moderno</option>
+        <option value="suave">Suave</option>
+        <option value="noche">Noche</option>
+        <option value="osm">OpenStreetMap</option>
+        <option value="claro">Calles claras</option>
+        <option value="oscuro">Oscuro</option>
+        <option value="satelite">Satélite (Esri)</option>
+      </select>
+      <label class="label" for="cartoInput">Clave de CARTO (opcional)</label>
+      <input id="cartoInput" type="password" autocomplete="off" placeholder="Pega tu clave de CARTO">
+      <span class="note">Con la clave, "Calles claras" y "Oscuro" usan los mapas de CARTO. Sin la clave usan los de Esri. Es gratis: pedila en <a href="https://carto.com/basemaps/apikey/" target="_blank" rel="noopener">carto.com/basemaps/apikey</a>.</span>
+      <label class="label" for="countryInput">País (código de 2 letras, opcional)</label>
+      <input id="countryInput" type="text" maxlength="2" placeholder="Ej.: AR, MX, CL, ES">
+      <span class="note">El país ayuda a que TomTom no confunda calles con el mismo nombre en otros países.</span>
+    </div>
+    <div class="card" id="accountCard" hidden>
+      <span id="accountWho"></span>
+      <a class="btn payLink" target="_blank" rel="noopener" hidden>Pagar suscripción</a>
+      <button class="btn" id="logoutBtn" type="button" hidden>Cerrar sesión</button>
+    </div>
+    <p class="note" id="nativeInfo" hidden></p>
+    <p class="note">Las paradas se guardan en este teléfono. Exporta el CSV si quieres guardarlas aparte.</p>
+   </div>
+  </section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@maplibre/maplibre-gl-leaflet@0.0.22/leaflet-maplibre-gl.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const KEY = "ruta-escaner-v1";
+  // App de Android (Capacitor): GPS y voz del teléfono siguen andando con la pantalla apagada o en otra app.
+  const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  const plug = (n) => NATIVE ? (window.CapPlugins && window.CapPlugins[n]) || (window.Capacitor.Plugins && window.Capacitor.Plugins[n]) || null : null;
+  const pad = (n) => String(n).padStart(4, "0");
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(KEY + ":" + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+    set(k, v) { try { localStorage.setItem(KEY + ":" + k, JSON.stringify(v)); } catch {} },
+  };
+
+  // items: {num, address, createdAt, lat?, lng?, done?}; route: {order:[num], summary, line:[[lat,lng]], start:{lat,lng}}
+  let items = store.get("items", []);
+  let route = store.get("route", null);
+  const save = () => { store.set("items", items); store.set("route", route); };
+  const nextNum = () => items.reduce((m, it) => Math.max(m, it.num), 0) + 1;
+  const byNum = (n) => items.find(it => it.num === n);
+
+  // ---------- pestañas ----------
+  // ---------- paneles (Paradas, Ajustes) ----------
+  function closeSheets() { document.querySelectorAll(".sheet").forEach(x => x.hidden = true); $("backdrop").hidden = true; }
+  function showTab(id) {
+    if (id === "p-scan") { closeSheets(); openScanner(); return; }
+    closeSheets(); $(id).hidden = false; $("backdrop").hidden = false;
+  }
+  document.querySelectorAll(".fab[data-p]").forEach(t => t.addEventListener("click", () => showTab(t.dataset.p)));
+  document.querySelectorAll("[data-close]").forEach(b => b.addEventListener("click", closeSheets));
+  $("backdrop").addEventListener("click", closeSheets);
+
+  // ---------- mapa ----------
+  const map = L.map("map", { zoomControl: true }).setView([-34.6037, -58.3816], 11);
+  // Fondos de mapa gratuitos. Claro y Oscuro usan CARTO si hay clave (gratis) en Ajustes; si no, Esri.
+  const OSM = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+  const CARTO_ATT = OSM + ' &copy; <a href="https://carto.com/attributions">CARTO</a>';
+  const CARTO = {
+    claro: ["https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=", CARTO_ATT, 20],
+    oscuro: ["https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png?key=", CARTO_ATT, 20],
+  };
+  const BASEMAPS = {
+    claro: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", "Mapa &copy; Esri", 19],
+    osm: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png", OSM, 19],
+    oscuro: ["https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", "Mapa &copy; Esri", 19, 16],
+    satelite: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", "Imágenes &copy; Esri", 19],
+  };
+  // Mapas modernos (vectoriales, nítidos al hacer zoom) de OpenFreeMap: gratis, sin clave y sin límite.
+  const VECTOR = { moderno: "liberty", suave: "positron", noche: "dark" };
+  let base = null;
+  function setBasemap(name) {
+    if (VECTOR[name] && L.maplibreGL) {
+      if (base) map.removeLayer(base);
+      base = L.maplibreGL({ style: "https://tiles.openfreemap.org/styles/" + VECTOR[name], attribution: '<a href="https://openfreemap.org">OpenFreeMap</a> &copy; <a href="https://www.openmaptiles.org/">OpenMapTiles</a> ' + OSM }).addTo(map);
+      return;
+    }
+    if (VECTOR[name]) name = "osm";
+    const ck = store.get("carto", "");
+    let b = BASEMAPS[name] || BASEMAPS.osm;
+    if (ck && CARTO[name]) b = [CARTO[name][0] + encodeURIComponent(ck), CARTO[name][1], CARTO[name][2]];
+    if (base) map.removeLayer(base);
+    base = L.tileLayer(b[0], { maxZoom: b[2], maxNativeZoom: b[3] || b[2], attribution: b[1] }).addTo(map);
+  }
+  const savedStyle = store.get("mapStyleBeta", "moderno");
+  setBasemap(savedStyle); $("mapStyle").value = BASEMAPS[savedStyle] || VECTOR[savedStyle] ? savedStyle : "moderno";
+  $("mapStyle").addEventListener("change", () => { store.set("mapStyleBeta", $("mapStyle").value); setBasemap($("mapStyle").value); });
+
+  // ---------- mi ubicación: punto azul con el radio de precisión ----------
+  let meMarker = null, meCircle = null, meWatch = null, meFollow = false, meLast = null;
+  const meIcon = L.divIcon({ className: "", html: '<div class="me-dot"></div>', iconSize: [22, 22], iconAnchor: [11, 11] });
+  function onMe(pos) {
+    const ll = [pos.coords.latitude, pos.coords.longitude]; meLast = ll;
+    if (!meMarker) {
+      meCircle = L.circle(ll, { radius: pos.coords.accuracy, color: "#1a73e8", weight: 1, fillOpacity: .12, interactive: false }).addTo(map);
+      meMarker = L.marker(ll, { icon: meIcon, zIndexOffset: 1000, keyboard: false }).bindPopup("Estás acá").addTo(map);
+    } else { meMarker.setLatLng(ll); meCircle.setLatLng(ll).setRadius(pos.coords.accuracy); }
+    if (meFollow) { map.setView(ll, Math.max(map.getZoom(), 15)); meFollow = false; }
+    checkArrival({ lat: ll[0], lng: ll[1] });
+  }
+  function onMeErr(e) {
+    locBtn.classList.remove("on");
+    if (e.code === 1) toast("Permite la ubicación para ver dónde estás en el mapa.", true);
+    else toast("No se pudo obtener tu ubicación.", true);
+    if (meWatch != null) {
+      if (NATIVE) { if (typeof meWatch === "string") plug("BackgroundGeolocation").removeWatcher({ id: meWatch }).catch(() => {}); }
+      else navigator.geolocation.clearWatch(meWatch);
+      meWatch = null;
+    }
+  }
+  function startNativeWatch() {
+    const BG = plug("BackgroundGeolocation"); if (!BG) return false;
+    meWatch = "pending";
+    BG.addWatcher({
+      backgroundTitle: "Ruta Escáner", backgroundMessage: "Sigue tu ubicación para avisarte al llegar a cada parada.",
+      requestPermissions: true, stale: false, distanceFilter: 10,
+    }, (loc, err) => {
+      if (err) { onMeErr({ code: err.code === "NOT_AUTHORIZED" ? 1 : 2 }); return; }
+      if (loc) onMe({ coords: { latitude: loc.latitude, longitude: loc.longitude, accuracy: loc.accuracy || 30 } });
+    }).then(id => { if (meWatch === "pending") meWatch = id; }).catch(() => { meWatch = null; });
+    const LN = plug("LocalNotifications"); if (LN) LN.requestPermissions().catch(() => {});
+    return true;
+  }
+  function startMe(center) {
+    if (!NATIVE && !navigator.geolocation) { toast("Este teléfono no permite ver la ubicación.", true); return; }
+    meFollow = center;
+    if (center && meLast) { map.setView(meLast, Math.max(map.getZoom(), 15)); meFollow = false; }
+    if (meWatch == null && !(NATIVE && startNativeWatch()))
+      meWatch = navigator.geolocation.watchPosition(onMe, onMeErr, { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 });
+    locBtn.classList.add("on");
+    keepAwake();
+  }
+  // Mantener la pantalla encendida mientras se sigue la ubicación (el aviso por voz necesita la app abierta).
+  let wakeLock = null;
+  async function keepAwake() {
+    if (!("wakeLock" in navigator) || wakeLock) return;
+    try { wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release", () => { wakeLock = null; }); } catch {}
+  }
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && meWatch != null) keepAwake(); });
+  const LocateCtl = L.Control.extend({ options: { position: "topleft" }, onAdd() {
+    const wrap = L.DomUtil.create("div", "leaflet-bar");
+    const b = L.DomUtil.create("button", "locate-btn", wrap); b.type = "button"; b.title = "Mi ubicación"; b.setAttribute("aria-label", "Mi ubicación"); b.textContent = "◎";
+    L.DomEvent.disableClickPropagation(wrap); L.DomEvent.on(b, "click", () => startMe(true));
+    return wrap;
+  } });
+  new LocateCtl().addTo(map);
+  const locBtn = document.querySelector(".locate-btn");
+  // si ya diste permiso antes, el punto aparece solo al abrir la app
+  if (NATIVE) startMe(false); // en la app de Android se sigue la ubicación desde que se abre
+  else try { navigator.permissions && navigator.permissions.query({ name: "geolocation" }).then(st => { if (st.state === "granted") startMe(false); }).catch(() => {}); } catch {}
+  const layer = L.layerGroup().addTo(map);
+  const pinIcon = (text, cls) => { const z = cls === "next" ? 38 : 32; return L.divIcon({ className: "", html: `<div class="pin ${cls || ""}"><span>${text}</span></div>`, iconSize: [z, z], iconAnchor: [z / 2, z], popupAnchor: [0, -z + 2] }); };
+  const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const gmaps = (it) => "https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=" +
+    encodeURIComponent(typeof it.lat === "number" ? it.lat + "," + it.lng : it.address);
+
+  function orderedItems() {
+    if (!route) return items.slice().sort((a, b) => a.num - b.num);
+    const inRoute = route.order.map(byNum).filter(Boolean);
+    const rest = items.filter(it => !route.order.includes(it.num)).sort((a, b) => a.num - b.num);
+    return [...inRoute, ...rest];
+  }
+
+  // Letra de cada parada según el orden de la ruta (A, B… Z, AA, AB…). Paquetes a la misma dirección comparten letra.
+  const abc = (i) => { let s = ""; i++; while (i > 0) { const r = (i - 1) % 26; s = String.fromCharCode(65 + r) + s; i = Math.floor((i - 1) / 26); } return s; };
+  const addrKey = (it) => it.address.toLowerCase().replace(/[^a-z0-9áéíóúñ]+/g, " ").trim();
+  const geoKey = (it) => typeof it.lat === "number" ? it.lat.toFixed(4) + "," + it.lng.toFixed(4) : "";
+  function letters() {
+    const out = new Map(); if (!route) return out;
+    const groups = []; // cada grupo: misma dirección escrita o mismo punto en el mapa
+    const stops = route.order.map(byNum).filter(Boolean);
+    const gi = stops.map(it => {
+      let i = groups.findIndex(g => g.a.has(addrKey(it)) || (geoKey(it) && g.g.has(geoKey(it))));
+      if (i < 0) { groups.push({ a: new Set(), g: new Set() }); i = groups.length - 1; }
+      groups[i].a.add(addrKey(it)); if (geoKey(it)) groups[i].g.add(geoKey(it));
+      return i;
+    });
+    const za = $("zaChk") && $("zaChk").checked;
+    stops.forEach((it, k) => out.set(it.num, abc(za ? groups.length - 1 - gi[k] : gi[k])));
+    return out;
+  }
+
+  function removeItem(it) {
+    items = items.filter(x => x.num !== it.num);
+    if (route) route.order = route.order.filter(n => n !== it.num);
+    save(); refresh(false);
+  }
+  // ---------- aviso al llegar: mensaje en pantalla y voz con la referencia ----------
+  const announced = new Set(); let arriveItem = null;
+  function nextStop() {
+    const pend = (route ? route.order.map(byNum) : items.slice().sort((a, b) => a.num - b.num)).filter(it => it && !it.done && typeof it.lat === "number");
+    return pend[0] || null;
+  }
+  function stopSpeak() { const TTS = plug("TextToSpeech"); if (TTS) TTS.stop().catch(() => {}); try { window.speechSynthesis && speechSynthesis.cancel(); } catch {} }
+  function speak(text) {
+    const TTS = plug("TextToSpeech");
+    if (TTS) { TTS.stop().catch(() => {}).then(() => TTS.speak({ text, lang: "es-AR", rate: 0.95, category: "playback" })).catch(() => {}); return; }
+    if (!("speechSynthesis" in window)) return;
+    try {
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text); u.lang = "es-AR"; u.rate = 0.95;
+      const v = speechSynthesis.getVoices().find(x => /^es(-|_)AR/i.test(x.lang)) || speechSynthesis.getVoices().find(x => /^es/i.test(x.lang));
+      if (v) u.voice = v;
+      speechSynthesis.speak(u);
+    } catch {}
+  }
+  function arriveText(it) {
+    const stop = route ? route.order.indexOf(it.num) + 1 : 0, l = letters().get(it.num);
+    return "Llegando a " + (stop ? "la parada " + stop + (l ? ", letra " + l.split("").join(" ") : "") + ". " : "la parada. ") +
+      "Paquete número " + it.num + ". " + (it.ref ? "Referencia: " + it.ref + "." : "Sin referencia.");
+  }
+  function showArrival(it) {
+    arriveItem = it;
+    const stop = route ? route.order.indexOf(it.num) + 1 : 0, l = letters().get(it.num);
+    $("arriveCode").textContent = (stop ? "Parada " + stop + (l ? " · " + l : "") + " · " : "") + "Nº " + pad(it.num);
+    $("arriveAddr").textContent = it.address;
+    $("arriveRef").textContent = it.ref ? "🗒 " + it.ref : "Sin referencia";
+    $("arrive").hidden = false;
+    if (navigator.vibrate) try { navigator.vibrate([200, 100, 200]); } catch {}
+    speak(arriveText(it));
+    const LN = plug("LocalNotifications");
+    if (LN) LN.schedule({ notifications: [{ id: it.num, title: $("arriveCode").textContent, body: it.address + (it.ref ? " · " + it.ref : "") }] }).catch(() => {});
+  }
+  function checkArrival(me) {
+    if (!$("arriveChk").checked) return;
+    const it = nextStop(); if (!it || announced.has(it.num)) return;
+    const lim = Math.max(20, Number($("arriveDist").value) || 150);
+    if (kmBetween(me, it) * 1000 <= lim) { announced.add(it.num); showArrival(it); }
+  }
+  $("arriveSay").addEventListener("click", () => { if (arriveItem) speak(arriveText(arriveItem)); });
+  $("arriveClose").addEventListener("click", () => { $("arrive").hidden = true; stopSpeak(); });
+  $("arriveDone").addEventListener("click", () => {
+    $("arrive").hidden = true; stopSpeak();
+    if (arriveItem) { arriveItem.done = true; save(); refresh(false); toast("Nº " + pad(arriveItem.num) + " entregada"); arriveItem = null; }
+    if (meLast) checkArrival({ lat: meLast[0], lng: meLast[1] });
+  });
+
+  // Ventana al tocar un pin: datos de la parada y botones para navegar, editar, marcar entregada o eliminar.
+  function stopPopup(it, stop, letter) {
+    const d = document.createElement("div"); d.className = "pop";
+    // los botones cambian el contenido; sin esto el mapa toma el toque como fuera de la ventana y la cierra
+    d.addEventListener("click", (e) => e.stopPropagation());
+    const view = () => {
+      d.innerHTML = `<b>${stop ? "Parada " + stop + (letter ? " · Letra " + letter : "") + "<br>" : "Sin ordenar<br>"}Nº ${pad(it.num)}</b>
+        <div>${esc(it.address)}</div>
+        ${it.ref ? `<div class="pref">🗒 ${esc(it.ref)}</div>` : `<div class="muted">Sin referencia</div>`}
+        ${it.done ? "<div>✓ Entregada</div>" : ""}
+        <div class="pacts"><a class="mini" href="${gmaps(it)}" target="_blank" rel="noopener">Navegar</a>
+        <button class="mini" type="button" data-a="edit">Editar</button>
+        <button class="mini" type="button" data-a="done">${it.done ? "Deshacer" : "Entregada"}</button>
+        <button class="mini" type="button" data-a="del">Eliminar</button></div>`;
+      d.querySelector('[data-a="edit"]').addEventListener("click", edit);
+      d.querySelector('[data-a="done"]').addEventListener("click", () => { it.done = !it.done; save(); map.closePopup(); refresh(false); });
+      d.querySelector('[data-a="del"]').addEventListener("click", (e) => {
+        const b = e.currentTarget;
+        if (b.dataset.sure) { map.closePopup(); removeItem(it); toast("Nº " + pad(it.num) + " eliminada"); return; }
+        b.dataset.sure = "1"; b.textContent = "¿Seguro? Toca de nuevo"; b.classList.add("confirm");
+      });
+    };
+    const edit = () => {
+      d.innerHTML = `<b>Editar Nº ${pad(it.num)}</b>
+        <label class="label">Dirección</label><textarea rows="2"></textarea>
+        <label class="label">Referencia</label>
+        <div class="refrow"><input type="text" placeholder="Ej.: portón negro">${SR ? '<button class="btn mic" type="button" aria-label="Dictar la referencia">🎤</button>' : ""}</div>
+        <span class="note"></span>
+        <div class="pacts"><button class="mini" type="button" data-a="ok">Guardar</button><button class="mini" type="button" data-a="no">Cancelar</button></div>`;
+      const ta = d.querySelector("textarea"), inp = d.querySelector("input"), note = d.querySelector(".note"), mic = d.querySelector(".mic");
+      ta.value = it.address; inp.value = it.ref || "";
+      if (mic) mic.addEventListener("click", () => dictate(inp, mic, (m) => { note.textContent = m; }));
+      d.querySelector('[data-a="no"]').addEventListener("click", () => { stopMic(); view(); });
+      d.querySelector('[data-a="ok"]').addEventListener("click", async () => {
+        stopMic();
+        const na = ta.value.replace(/\s+/g, " ").trim(), nr = inp.value.replace(/\s+/g, " ").trim();
+        if (!na) { note.textContent = "La dirección no puede quedar vacía."; return; }
+        const moved = na !== it.address;
+        it.address = na; if (nr) it.ref = nr; else delete it.ref;
+        if (moved) { delete it.lat; delete it.lng; }
+        save(); map.closePopup(); refresh(false); toast("Nº " + pad(it.num) + " actualizada");
+        if (moved) { try { const g = await geocode(na, $("keyInput").value.trim()); if (g) { it.lat = g.lat; it.lng = g.lng; save(); refresh(false); } else toast("No encontré la nueva dirección en el mapa", true); } catch {} }
+      });
+      setTimeout(() => ta.focus(), 50);
+    };
+    view();
+    return d;
+  }
+
+  function drawMap(fit) {
+    layer.clearLayers();
+    const pts = [];
+    // Línea que une las paradas: por las calles si la ruta trajo el trazado; si no, recta y punteada en el orden de la ruta
+    // (o por número si todavía no se optimizó).
+    const chain = [];
+    if (route && route.start) chain.push([route.start.lat, route.start.lng]);
+    (route ? route.order.map(byNum).filter(Boolean) : items.slice().sort((a, b) => a.num - b.num))
+      .forEach(it => { if (typeof it.lat === "number") chain.push([it.lat, it.lng]); });
+    const street = route && route.line && route.line.length > 1;
+    const path = street ? route.line : chain;
+    if (path.length > 1) {
+      L.polyline(path, { color: "#ffffff", weight: street ? 6 : 4, opacity: .95, lineCap: "round", lineJoin: "round" }).addTo(layer);
+      L.polyline(path, { color: route ? "#2563eb" : "#64748b", weight: street ? 3.5 : 2, opacity: 1, lineCap: "round", lineJoin: "round", dashArray: street ? null : "6 8" }).addTo(layer);
+    }
+    if (route && route.start) {
+      L.marker([route.start.lat, route.start.lng], { icon: pinIcon("⌂", "start") }).bindPopup("<b>Salida</b>").addTo(layer);
+      pts.push([route.start.lat, route.start.lng]);
+    }
+    const lt = letters(), nx = nextStop();
+    orderedItems().forEach((it) => {
+      if (typeof it.lat !== "number") return;
+      const stop = route ? route.order.indexOf(it.num) + 1 : 0;
+      const m = L.marker([it.lat, it.lng], { icon: pinIcon(stop ? stop + (lt.get(it.num) || "") : it.num, it.done ? "done" : (stop ? (it === nx ? "next" : "") : "unordered")), zIndexOffset: it === nx ? 1000 : 0 });
+      m.bindPopup(() => stopPopup(it, stop, lt.get(it.num)), { minWidth: 220, maxWidth: 290 });
+      m.addTo(layer);
+      pts.push([it.lat, it.lng]);
+    });
+    if (fit && pts.length) map.fitBounds(pts, { padding: [30, 30], maxZoom: 16 });
+  }
+
+  // ---------- lista ----------
+  let pendingDelete = null;
+  function render() {
+    $("nextTag").textContent = pad(nextNum());
+    $("countTab").textContent = items.length ? String(items.length) : "";
+    const ol = $("stops"); ol.textContent = "";
+    const list = orderedItems(); const lt = letters();
+    if (!list.length) {
+      const li = document.createElement("li"); li.className = "empty";
+      li.textContent = "Todavía no hay paradas. Escanea una etiqueta y la primera quedará como Nº 0001.";
+      ol.append(li);
+    }
+    list.forEach((it) => {
+      const stop = route ? route.order.indexOf(it.num) + 1 : 0;
+      const li = document.createElement("li"); if (it.done) li.className = "done";
+      const b = document.createElement("span"); b.className = "badge" + (stop ? "" : " none"); b.textContent = stop || "–";
+      b.title = stop ? "Orden en la ruta" : "Sin ordenar";
+      const ord = document.createElement("div"); ord.className = "ord"; ord.append(b);
+      if (lt.get(it.num)) { const l = document.createElement("span"); l.className = "letter"; l.title = "Código de verificación"; l.textContent = lt.get(it.num); ord.append(l); }
+      const a = document.createElement("div"); a.className = "addr";
+      const small = document.createElement("small"); small.textContent = "Nº " + pad(it.num) + (typeof it.lat === "number" ? "" : " · sin ubicar");
+      a.append(small, document.createTextNode(it.address));
+      if (it.ref) { const r = document.createElement("small"); r.className = "ref"; r.textContent = it.ref; a.append(r); }
+      a.style.cursor = "pointer";
+      a.addEventListener("click", () => { if (typeof it.lat === "number") { map.setView([it.lat, it.lng], 16); closeSheets(); } });
+      const acts = document.createElement("div"); acts.className = "acts";
+      const nav = document.createElement("a"); nav.className = "mini"; nav.textContent = "Ir"; nav.href = gmaps(it); nav.target = "_blank"; nav.rel = "noopener";
+      const done = document.createElement("button"); done.className = "mini"; done.type = "button"; done.textContent = it.done ? "Deshacer" : "Entregada";
+      done.addEventListener("click", () => { it.done = !it.done; save(); refresh(false); });
+      const del = document.createElement("button"); del.type = "button"; del.className = "mini" + (pendingDelete === it.num ? " confirm" : "");
+      del.textContent = pendingDelete === it.num ? "¿Borrar?" : "Borrar";
+      del.addEventListener("click", () => {
+        if (pendingDelete !== it.num) { pendingDelete = it.num; render(); return; }
+        pendingDelete = null; removeItem(it);
+      });
+      const ed = document.createElement("button"); ed.type = "button"; ed.className = "mini"; ed.textContent = "Editar";
+      ed.addEventListener("click", async () => {
+        const v = prompt("Dirección del Nº " + pad(it.num), it.address); if (v == null) return;
+        const nv = v.replace(/\s+/g, " ").trim(); if (!nv || nv === it.address) return;
+        it.address = nv; delete it.lat; delete it.lng; save(); refresh(false);
+        try { const g = await geocode(nv, $("keyInput").value.trim()); if (g) { it.lat = g.lat; it.lng = g.lng; save(); refresh(true); } } catch {}
+      });
+      acts.append(nav, ed, done, del);
+      li.append(ord, a, acts); ol.append(li);
+    });
+    if (route && route.summary) { $("summary").textContent = route.summary; $("summary").hidden = false; } else $("summary").hidden = true;
+    const left = list.filter(it => !it.done).length;
+    $("chipSummary").textContent = route && route.summary ? route.summary + (left ? " · faltan " + left : " · todo entregado") : "";
+    const pending = list.filter(it => !it.done).slice(0, 10);
+    if (pending.length) {
+      const u = new URL("https://www.google.com/maps/dir/");
+      u.searchParams.set("api", "1"); u.searchParams.set("travelmode", "driving");
+      const loc = (it) => typeof it.lat === "number" ? it.lat + "," + it.lng : it.address;
+      u.searchParams.set("destination", loc(pending[pending.length - 1]));
+      if (pending.length > 1) u.searchParams.set("waypoints", pending.slice(0, -1).map(loc).join("|"));
+      $("navAll").href = u.toString(); $("navAll").hidden = false;
+    } else $("navAll").hidden = true;
+  }
+  function refresh(fit) { render(); drawMap(fit); }
+
+  // ---------- escaneo (lectura en el teléfono) ----------
+  async function shrink(file, max = 1800, gray = true) {
+    try {
+      const bmp = await createImageBitmap(file);
+      const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+      const g = c.getContext("2d"); if (gray) g.filter = "grayscale(1) contrast(1.4)";
+      g.drawImage(bmp, 0, 0, c.width, c.height);
+      return await new Promise(r => c.toBlob(b => r(b || file), "image/jpeg", 0.9));
+    } catch { return file; }
+  }
+  let ocr = null;
+  async function readText(img, onP) {
+    if (!window.Tesseract) throw new Error("no se pudo cargar el lector");
+    if (!ocr) ocr = await Tesseract.createWorker("spa", 1, { logger: m => { if (typeof m.progress === "number") onP(m.progress); } });
+    const { data } = await ocr.recognize(img);
+    return String(data.text || "").split("\n").map(l => l.replace(/[|_~«»]+/g, " ").replace(/\s+/g, " ").trim()).filter(l => l.length > 2);
+  }
+  // Marca de entrada las líneas que parecen dirección: tienen número y palabras de calle o código postal.
+  const looksAddress = (l) => /\d/.test(l) && (/\b(av|avda|avenida|calle|c\/|pje|pasaje|ruta|km|blvd|bv|boulevard|diag|piso|dpto|depto|cp|col|colonia|barrio|n[º°o]\.?)\b/i.test(l) || /\b[A-Z]?\d{4,5}[A-Z]{0,3}\b/.test(l) || /^[A-ZÁÉÍÓÚÑa-záéíóúñ.' ]+ \d{1,5}\b/.test(l));
+
+  // Etiquetas Mercado Libre Flex: la dirección está abajo en «Direccion:», «Barrio:» y en «CP:» con «PARTIDO / LOCALIDAD»;
+  // lo de arriba es del vendedor. El texto leído en el teléfono suele venir con letras cambiadas («bireccion»), por eso
+  // las búsquedas son tolerantes.
+  const DIR_RE = /(?:^|[\s:;,.])[a-z]{0,2}[il1|]?recc?i[oó0]n\s*[:.;]\s*/i;
+  const BAR_RE = /^\W*[bh8]arr?[il1]o\s*[:.;]?\s*/i;
+  const REF_RE = /^\W*r[eo]f[eo]renc[il1]a\s*[:.;]?\s*/i;
+  const STOP_RE = /^\W*(destinatar|r[eo]f[eo]renc|[bh8]arr?[il1]o\b|c\s*p\s*[:.;])/i;
+  const CP_RE = /^\W*c\s*p\s*[:.;]\s*(\d{4})/i;
+  const SELLER_RE = /pack\s*id|env[ií]o\s*[:.;]|\bsku\b|unidades/i;
+  const title = (t) => t.toLowerCase().replace(/(^|\s)\S/g, c => c.toUpperCase());
+  const tidy = (t) => t.replace(/[^\wÁÉÍÓÚÑáéíóúñü°º.,/ -]+/g, " ").replace(/\s+/g, " ").replace(/^[\s,.-]+|[\s,.-]+$/g, "");
+  // «PARTIDO / LOCALIDAD» → «Localidad, Partido» (una sola vez si son iguales)
+  const partido = (l) => { const m = l.match(/^([^/\d]{3,})\/([^/\d]{3,})$/); if (!m) return ""; const a = title(tidy(m[1])), b = title(tidy(m[2])); return a === b ? a : b + ", " + a; };
+  function clean(l) {
+    const d = l.match(DIR_RE); if (d) return tidy(l.slice(d.index + d[0].length));
+    const c = l.match(CP_RE); if (c) return "CP " + c[1];
+    if (BAR_RE.test(l)) return tidy(l.replace(BAR_RE, ""));
+    return partido(l) || tidy(l);
+  }
+  // Devuelve {sel: índices a marcar, rank: orden de cada índice} o null si no parece etiqueta Flex.
+  function flexPick(lines) {
+    const flex = lines.some(l => DIR_RE.test(l)) || lines.some(l => /pack\s*id|\bflex\b/i.test(l));
+    if (!flex) return null;
+    const sel = [], rank = new Map(), add = (i, r) => { if (clean(lines[i])) { sel.push(i); rank.set(i, r); } };
+    let d = -1; lines.forEach((l, i) => { if (DIR_RE.test(l)) d = i; });
+    if (d >= 0) {
+      add(d, 0);
+      // si la calle quedó partida en dos líneas, suma la siguiente
+      const nx = lines[d + 1];
+      if (nx && !STOP_RE.test(nx) && !SELLER_RE.test(nx) && (/[a-záéíóúñ]{3}/i.test(nx) || /^\W*\d{1,5}\b/.test(nx)) && nx.length < 40) add(d + 1, 0.5);
+      const b = lines.findIndex((l, i) => i > d && BAR_RE.test(l)); if (b >= 0) add(b, 1);
+    }
+    let cp = -1; lines.forEach((l, i) => { if (CP_RE.test(l)) cp = i; });
+    if (cp >= 0) { add(cp, 3); if (lines[cp + 1] && partido(lines[cp + 1])) add(cp + 1, 2); }
+    return { sel: d >= 0 ? sel : [], rank, found: d >= 0 };
+  }
+  function setLines(lines) {
+    const box = $("lines"); box.textContent = "";
+    if (!lines.length) { box.hidden = true; return; }
+    const fp = flexPick(lines);
+    const sel = new Set(fp ? fp.sel : lines.map((l, i) => looksAddress(l) && !SELLER_RE.test(l) ? i : -1).filter(i => i >= 0));
+    const rank = (i) => fp && fp.rank.has(i) ? fp.rank.get(i) : 2.5;
+    const sync = () => {
+      let pick = [...sel].sort((a, b) => fp ? rank(a) - rank(b) || a - b : a - b);
+      const out = [];
+      pick.forEach(i => { const c = fp ? clean(lines[i]) : lines[i]; if (!c) return; if (rank(i) === 0.5 && out.length) out[out.length - 1] += " " + c; else out.push(c); });
+      $("addrInput").value = out.join(", "); schedulePreview();
+    };
+    const note = document.createElement("span"); note.className = "note";
+    note.textContent = fp && !fp.found ? "No encontré la línea «Direccion». Toca las líneas de la dirección o escríbela:" : "Toca las líneas que forman la dirección:";
+    box.append(note);
+    lines.forEach((l, i) => {
+      const b = document.createElement("button"); b.type = "button"; b.textContent = l;
+      b.className = sel.has(i) ? "on" : "";
+      b.addEventListener("click", () => { sel.has(i) ? sel.delete(i) : sel.add(i); b.className = sel.has(i) ? "on" : ""; sync(); });
+      box.append(b);
+    });
+    box.hidden = false; sync();
+    const ref = lines.find(l => REF_RE.test(l));
+    if (ref) $("refInput").value = tidy(ref.replace(REF_RE, ""));
+  }
+
+  // Gemini: devuelve la dirección del destinatario o "" si no la encuentra.
+  const GEMINI_MODELS = ["gemini-flash-latest", "gemini-3.6-flash", "gemini-3.5-flash-lite"];
+  const GEMINI_PROMPT = [
+    "La imagen es una etiqueta de envío en Argentina, casi siempre de Mercado Libre Flex (zona Buenos Aires).",
+    "Cómo es la etiqueta Flex: ARRIBA está el VENDEDOR (nombre con #número, su calle, «Ciudad CP», «Envio:», «Pack ID:»), a veces con datos del producto (SKU, Unidades). IGNORA todo eso.",
+    "En el medio: «FLEX» o «Envío Flex», la fecha, el código QR, «CP: NNNN» en letra grande, dos líneas con el partido y la localidad (ej.: «SAN ISIDRO / MARTÍNEZ», «PILAR / PILAR») y «RESIDENCIAL» o «COMERCIAL» (a veces con horario de cierre).",
+    "ABAJO está el DESTINATARIO: «Direccion:», «Barrio:» (puede estar vacío), «Referencia:» y «Destinatario:». Esa es la dirección que quiero.",
+    "Arma la dirección así: lo que dice «Direccion:» (calle, número, piso/depto si hay), luego el barrio si no está vacío, luego la localidad y el partido de las líneas del medio (sin repetir si son iguales), y «CP NNNN».",
+    "Ejemplos de salida: «Avenida Avellaneda 4026, San Fernando, CP 1646»; «Calle San Isidro Labrador 451, Martínez, San Isidro, CP 1640»; «Calle 12 de Octubre 565, Pilar, CP 1630».",
+    "No uses nombres de personas, ni el SKU, Pack ID, fecha o QR. Ignora lo escrito a mano (números o letras con birome). No inventes datos que no se ven.",
+    "Si la etiqueta no es Flex, extrae igual la dirección del destinatario, nunca la del remitente.",
+    "Responde solo JSON: {\"encontrada\": true|false, \"direccion\": \"...\", \"referencia\": \"texto de Referencia o vacío\", \"tipo\": \"residencial|comercial|\"}.",
+  ].join("\n");
+  // Correcciones que hizo el usuario: se guardan las últimas y se le muestran a Gemini como ejemplos.
+  const FIX_MAX = 8;
+  function rememberFix(read, fixed) {
+    if (!read || !fixed || read === fixed) return;
+    const list = store.get("fixes", []).filter(f => f.leido !== read);
+    list.push({ leido: read, corregido: fixed });
+    store.set("fixes", list.slice(-FIX_MAX));
+  }
+  function fixesText() {
+    const list = store.get("fixes", []).slice(-5);
+    if (!list.length) return "";
+    return "\nAntes te equivocaste así y el usuario lo corrigió. Aprende de esto (formato y errores típicos):\n" +
+      list.map(f => "- Leíste: «" + f.leido + "» → Correcto: «" + f.corregido + "»").join("\n");
+  }
+  async function readWithGemini(img, key) {
+    const b64 = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(",")[1]); fr.onerror = rej; fr.readAsDataURL(img); });
+    const body = { contents: [{ parts: [
+      { inline_data: { mime_type: img.type || "image/jpeg", data: b64 } },
+      { text: GEMINI_PROMPT + fixesText() },
+    ] }], generationConfig: { responseMimeType: "application/json", temperature: 0 } };
+    let last = "";
+    for (const model of GEMINI_MODELS) {
+      const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent", {
+        method: "POST", headers: { "Content-Type": "application/json", "x-goog-api-key": key }, body: JSON.stringify(body) });
+      if (r.status === 404) { last = "modelo no disponible"; continue; }
+      if (r.status === 400 || r.status === 401 || r.status === 403) { const t = await r.text().catch(() => ""); throw new Error(/API_KEY|key/i.test(t) ? "clave de Gemini no válida" : "Gemini respondió " + r.status); }
+      if (r.status === 429) throw new Error("se acabó el cupo gratis de Gemini por ahora");
+      if (!r.ok) throw new Error("Gemini respondió " + r.status);
+      const j = await r.json();
+      const txt = j.candidates && j.candidates[0] && j.candidates[0].content && j.candidates[0].content.parts && j.candidates[0].content.parts.map(p => p.text || "").join("");
+      const m = String(txt || "").match(/\{[\s\S]*\}/);
+      const o = m ? JSON.parse(m[0]) : null;
+      if (!(o && o.encontrada && o.direccion)) return null;
+      return { address: String(o.direccion).trim(), ref: String(o.referencia || "").trim() };
+    }
+    throw new Error(last || "Gemini no respondió");
+  }
+
+  // QR de la etiqueta (Mercado Libre Flex trae un JSON con "id" del envío). Sirve para reconocer un paquete ya guardado.
+  let jsQRp = null;
+  const loadJsQR = () => jsQRp || (jsQRp = new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"; sc.onload = () => res(window.jsQR); sc.onerror = () => { jsQRp = null; rej(new Error("jsQR")); }; document.head.append(sc); }));
+  async function readQR(src) {
+    try {
+      const bmp = src instanceof HTMLCanvasElement ? src : await createImageBitmap(src);
+      let raw = "";
+      if ("BarcodeDetector" in window) {
+        try { const r = await new BarcodeDetector({ formats: ["qr_code"] }).detect(bmp); if (r[0]) raw = r[0].rawValue; } catch {}
+      }
+      if (!raw) {
+        const jsQR = await loadJsQR();
+        const k = Math.min(1, 1200 / Math.max(bmp.width, bmp.height));
+        const c = document.createElement("canvas"); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+        const g = c.getContext("2d"); g.drawImage(bmp, 0, 0, c.width, c.height);
+        const r = jsQR(g.getImageData(0, 0, c.width, c.height).data, c.width, c.height);
+        if (r) raw = r.data;
+      }
+      raw = String(raw || "").trim(); if (!raw) return "";
+      try { const o = JSON.parse(raw); if (o && o.id != null) return String(o.id); } catch {}
+      return raw;
+    } catch { return ""; }
+  }
+  function showVerify(it) {
+    const stop = route ? route.order.indexOf(it.num) + 1 : 0;
+    const l = letters().get(it.num);
+    $("stage").classList.add("is-verify"); $("verifyBox").hidden = false;
+    $("verifyCode").textContent = stop ? stop + " · " + l : "Nº " + pad(it.num);
+    $("verifyInfo").textContent = (stop ? "Parada " + stop + ", letra " + l + " · Nº " + pad(it.num) : "Ya guardado. Optimiza la ruta para ver su parada y letra.") + " · " + it.address;
+  }
+  let pendingQR = "";
+  let lastRead = ""; // lo que leyó el escáner, para aprender si el usuario lo corrige
+  async function onPhoto(file, qrSrc) {
+    hidePreview();
+    $("stage").classList.remove("is-verify"); $("verifyBox").hidden = true; pendingQR = "";
+    $("stage").hidden = false; $("previewBox").hidden = false; $("lines").hidden = true;
+    $("previewImg").src = URL.createObjectURL(file); $("addrInput").value = ""; $("refInput").value = ""; lastRead = "";
+    const st = $("scanStatus"); const say = (m, c) => { st.className = "status" + (c ? " " + c : ""); st.textContent = m; };
+    say("Preparando la foto…"); $("saveBtn").disabled = true;
+    const qr = await readQR(qrSrc || file);
+    if (qr) {
+      const known = items.find(it => it.qr === qr);
+      if (known) { showVerify(known); say("Este paquete ya está en la lista.", "ok"); $("saveBtn").disabled = false; return; }
+      pendingQR = qr;
+    }
+    const gkey = $("geminiInput").value.trim();
+    let why = gkey ? "" : "Sin clave de Gemini: leída en el teléfono. ";
+    if (gkey) {
+      try {
+        say("Gemini está leyendo la dirección…");
+        const got = await readWithGemini(await shrink(file, 1600, false), gkey);
+        $("saveBtn").disabled = false;
+        if (got) { $("addrInput").value = lastRead = got.address; $("refInput").value = got.ref; schedulePreview(); say("Dirección leída por Gemini. Revísala y guárdala.", "ok"); return; }
+        why = "Gemini no encontró la dirección: leída en el teléfono. ";
+      } catch (e) { why = "Gemini falló (" + (e.message || e) + "): leída en el teléfono. "; }
+      say(why + "Leyendo…");
+    }
+    try {
+      const img = await shrink(file);
+      const lines = await readText(img, p => say(why + "Leyendo… " + Math.round(p * 100) + "%"));
+      if (!lines.length) { say("No se encontró texto. Prueba más cerca y con buena luz.", "err"); return; }
+      setLines(lines); lastRead = $("addrInput").value.trim();
+      say(why + "Revisa la dirección y guárdala.", gkey ? "err" : "");
+    } catch (e) {
+      say("No se pudo leer la foto (" + (e.message || e) + "). Escríbela a mano.", "err");
+    } finally { $("saveBtn").disabled = false; }
+  }
+
+  // ---------- escáner con cámara y recuadro ----------
+  let stream = null;
+  async function openScanner() {
+    $("scanner").hidden = false; $("stage").hidden = true; $("frozen").hidden = true; $("scanControls").hidden = false;
+    $("scanHint").textContent = "Encuadra la dirección dentro del recuadro y toca el botón";
+    try {
+      // en la app de Android hay que pedir el permiso de cámara del teléfono antes de abrirla
+      const CAM = plug("Camera");
+      if (CAM && !stream) { const st = await CAM.requestPermissions({ permissions: ["camera"] }).catch(() => null); if (st && st.camera === "denied") throw new Error("permiso"); }
+      if (!stream) stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+      $("cam").srcObject = stream; await $("cam").play().catch(() => {});
+    } catch (e) {
+      stream = null;
+      $("scanHint").textContent = "No se pudo abrir la cámara aquí (" + (e && (e.name || e.message) || e) + "). Toca el botón amarillo para sacar la foto con la cámara del teléfono.";
+    }
+  }
+  function stopCam() { if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } $("cam").srcObject = null; }
+  function closeScanner() { stopCam(); $("scanner").hidden = true; refresh(true); }
+  function resumeScan() { $("stage").hidden = true; $("frozen").hidden = true; $("scanControls").hidden = false; if (!stream) openScanner(); }
+  // Recorta de la imagen de la cámara solo lo que se ve dentro del recuadro (con un margen).
+  function grabFrame() {
+    const v = $("cam"), vw = v.videoWidth, vh = v.videoHeight;
+    if (!vw || !vh) return null;
+    const er = v.getBoundingClientRect(), fr = $("frame").getBoundingClientRect();
+    const sc = Math.max(er.width / vw, er.height / vh), ox = (er.width - vw * sc) / 2, oy = (er.height - vh * sc) / 2;
+    const mx = fr.width * 0.08, my = fr.height * 0.12;
+    let x = (fr.left - er.left - mx - ox) / sc, y = (fr.top - er.top - my - oy) / sc;
+    let w = (fr.width + 2 * mx) / sc, h = (fr.height + 2 * my) / sc;
+    x = Math.max(0, x); y = Math.max(0, y); w = Math.min(vw - x, w); h = Math.min(vh - y, h);
+    const c = document.createElement("canvas"); c.width = Math.round(w); c.height = Math.round(h);
+    c.getContext("2d").drawImage(v, x, y, w, h, 0, 0, c.width, c.height);
+    return c;
+  }
+  $("scanBtn").addEventListener("click", () => showTab("p-scan"));
+  $("closeScan").addEventListener("click", closeScanner);
+  $("retakeBtn").addEventListener("click", resumeScan);
+  $("shutter").addEventListener("click", () => {
+    const c = stream && grabFrame();
+    if (!c) { if (!nativePhoto("CAMERA")) $("photo").click(); return; }
+    const v = $("cam"), full = document.createElement("canvas"); full.width = v.videoWidth; full.height = v.videoHeight; full.getContext("2d").drawImage(v, 0, 0);
+    $("frozen").src = c.toDataURL("image/jpeg", 0.9); $("frozen").hidden = false;
+    c.toBlob(b => { if (b) { $("scanControls").hidden = true; onPhoto(b, full); } }, "image/jpeg", 0.92);
+  });
+  $("galleryBtn").addEventListener("click", () => { if (!nativePhoto("PHOTOS")) $("gallery").click(); });
+  // App de Android: foto con la cámara o la galería del teléfono (plugin Camera), por si la vista en vivo no abre.
+  function nativePhoto(source) {
+    const CAM = plug("Camera"); if (!CAM) return false;
+    CAM.getPhoto({ source, resultType: "dataUrl", quality: 85, width: 1800, correctOrientation: true, saveToGallery: false })
+      .then(async (ph) => { const b = await (await fetch(ph.dataUrl)).blob(); $("scanControls").hidden = true; onPhoto(b); })
+      .catch((e) => { if (!/cancel/i.test(String(e && e.message || e))) toast("No se pudo usar la cámara: " + (e.message || e), true); });
+    return true;
+  }
+  ["photo", "gallery"].forEach(id => $(id).addEventListener("change", e => { const f = e.target.files[0]; if (f) onPhoto(f); e.target.value = ""; }));
+  $("manualBtn").addEventListener("click", () => { hidePreview(); lastRead = ""; pendingQR = ""; $("stage").classList.remove("is-verify"); $("verifyBox").hidden = true; $("refInput").value = ""; $("stage").hidden = false; $("scanControls").hidden = true; $("previewBox").hidden = true; $("lines").hidden = true; $("addrInput").focus(); });
+  ["photo", "gallery"].forEach(id => $(id).addEventListener("change", () => { $("scanControls").hidden = true; }));
+
+  function toast(m, bad) {
+    if ($("scanner").hidden) { const mt = $("mapToast"); mt.textContent = m; mt.style.color = bad ? "#ff8a80" : "#fff"; mt.hidden = false; clearTimeout(toast.m); toast.m = setTimeout(() => mt.hidden = true, 3000); return; }
+    const t = $("toast"); t.textContent = m; t.className = "scan-msg"; t.style.color = bad ? "#ff8a80" : "#9ff0c4"; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 3500); }
+
+  $("saveBtn").addEventListener("click", async () => {
+    const address = $("addrInput").value.replace(/\s+/g, " ").trim();
+    if (!address) { toast("Escribe o escanea una dirección primero.", true); return; }
+    const it = { num: nextNum(), address, createdAt: new Date().toISOString() };
+    const pre = pendingGeo && pendingGeo.text === address ? pendingGeo : null;
+    if (pre) { it.lat = pre.lat; it.lng = pre.lng; }
+    hidePreview();
+    const ref = $("refInput").value.replace(/\s+/g, " ").trim(); if (ref) it.ref = ref;
+    rememberFix(lastRead.replace(/\s+/g, " "), address); lastRead = "";
+    if (pendingQR) { it.qr = pendingQR; pendingQR = ""; }
+    items.push(it); save();
+    $("stage").hidden = true; $("addrInput").value = ""; $("refInput").value = "";
+    toast("Guardada como Nº " + pad(it.num));
+    refresh(false);
+    if (pre) { refresh(true); return; }
+    try { const g = await geocode(it.address, $("keyInput").value.trim()); if (g) { it.lat = g.lat; it.lng = g.lng; save(); refresh(true); } } catch {}
+  });
+
+  // ---------- ubicar direcciones: TomTom con clave, OpenStreetMap (Nominatim) sin clave ----------
+  let lastNominatim = 0;
+  async function geocodeOSM(text) {
+    const wait = 1100 - (Date.now() - lastNominatim); // Nominatim pide máximo 1 consulta por segundo
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    lastNominatim = Date.now();
+    const u = new URL("https://nominatim.openstreetmap.org/search");
+    u.searchParams.set("format", "jsonv2"); u.searchParams.set("limit", "1"); u.searchParams.set("q", text);
+    u.searchParams.set("accept-language", "es");
+    const cc = $("countryInput").value.trim().toLowerCase(); if (/^[a-z]{2}$/.test(cc)) u.searchParams.set("countrycodes", cc);
+    const r = await fetch(u);
+    if (!r.ok) throw new Error("el buscador de OpenStreetMap respondió " + r.status);
+    const j = await r.json();
+    return j && j[0] ? { lat: Number(j[0].lat), lng: Number(j[0].lon), label: j[0].display_name || "" } : null;
+  }
+  async function geocode(text, key) {
+    if (!key) return geocodeOSM(text);
+    const u = new URL("https://api.tomtom.com/search/2/geocode/" + encodeURIComponent(text) + ".json");
+    u.searchParams.set("key", key); u.searchParams.set("limit", "1"); u.searchParams.set("language", "es-ES");
+    const cc = $("countryInput").value.trim().toUpperCase(); if (/^[A-Z]{2}$/.test(cc)) u.searchParams.set("countrySet", cc);
+    const r = await fetch(u);
+    if (r.status === 403 || r.status === 401) throw new Error("clave de TomTom no válida");
+    if (!r.ok) throw new Error("TomTom respondió " + r.status);
+    const j = await r.json(); const p = j.results && j.results[0] && j.results[0].position;
+    const a = j.results[0] && j.results[0].address;
+    return p ? { lat: p.lat, lng: p.lon, label: a && a.freeformAddress || "" } : null;
+  }
+
+  // ---------- vista previa: la dirección leída o escrita aparece en un mapita antes de guardar ----------
+  let checkMap = null, checkPin = null, checkT = 0, checkSeq = 0, pendingGeo = null;
+  function hidePreview() { clearTimeout(checkT); checkSeq++; pendingGeo = null; $("checkMap").hidden = true; $("checkInfo").hidden = true; }
+  function schedulePreview() {
+    clearTimeout(checkT);
+    const text = $("addrInput").value.replace(/\s+/g, " ").trim();
+    if (text.length < 5) { hidePreview(); return; }
+    if (pendingGeo && pendingGeo.text === text) return;
+    checkT = setTimeout(() => previewAddr(text), 900);
+  }
+  async function previewAddr(text) {
+    const seq = ++checkSeq, info = $("checkInfo");
+    info.hidden = false; info.style.color = ""; info.textContent = "Buscando la dirección en el mapa…";
+    let g = null;
+    try { g = await geocode(text, $("keyInput").value.trim()); } catch (e) { if (seq === checkSeq) info.textContent = "No se pudo buscar en el mapa (" + (e.message || e) + ")."; return; }
+    if (seq !== checkSeq) return;
+    if (!g) { pendingGeo = null; $("checkMap").hidden = true; info.style.color = "var(--bad)"; info.textContent = "No encontré esta dirección en el mapa. Revisa calle, número y localidad."; return; }
+    pendingGeo = { text, lat: g.lat, lng: g.lng };
+    $("checkMap").hidden = false;
+    if (!checkMap) {
+      checkMap = L.map("checkMap", { zoomControl: false, attributionControl: false });
+      L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(checkMap);
+      checkPin = L.marker([g.lat, g.lng], { draggable: true, icon: pinIcon(nextNum(), "") }).addTo(checkMap);
+      checkPin.on("dragend", () => { const ll = checkPin.getLatLng(); if (pendingGeo) { pendingGeo.lat = ll.lat; pendingGeo.lng = ll.lng; } info.textContent = "Ubicación corregida a mano."; });
+    }
+    checkMap.invalidateSize();
+    checkPin.setIcon(pinIcon(nextNum(), "")); checkPin.setLatLng([g.lat, g.lng]); checkMap.setView([g.lat, g.lng], 16);
+    info.textContent = (g.label ? "En el mapa: " + g.label + ". " : "") + "Si el pin no está en el lugar correcto, arrástralo o corrige la dirección.";
+  }
+  $("addrInput").addEventListener("input", schedulePreview);
+
+  // ---------- referencia por voz (dictado del navegador) ----------
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let rec = null;
+  const LISTEN = "Te escucho… toca 🎤 para terminar.";
+  function stopMic() { if (rec) { try { rec.stop(); } catch {} } }
+  // Dicta en «input» (agrega al final de lo que ya hay). «say» muestra mensajes.
+  function dictate(input, btn, say) {
+    if (rec) { stopMic(); return; }
+    rec = new SR(); rec.lang = "es-AR"; rec.interimResults = true; rec.continuous = false;
+    const before = input.value.trim(); let last = "";
+    rec.onresult = (e) => {
+      const txt = Array.from(e.results).map(r => r[0].transcript).join(" ").trim();
+      input.value = (before ? before + ", " : "") + txt;
+    };
+    rec.onerror = (e) => { last = e.error === "not-allowed" ? "Permite el micrófono para dictar la referencia." : e.error === "no-speech" ? "No te escuché. Toca 🎤 y habla." : "No se pudo usar el micrófono (" + e.error + ")."; say(last); };
+    rec.onend = () => { rec = null; btn.classList.remove("on"); if (!last) say(""); };
+    try { rec.start(); btn.classList.add("on"); say(LISTEN); } catch (e) { rec = null; say("No se pudo usar el micrófono."); }
+  }
+  if (SR) {
+    $("micBtn").hidden = false;
+    const micSay = (m) => { $("micInfo").hidden = !m; $("micInfo").textContent = m; };
+    $("micBtn").addEventListener("click", () => dictate($("refInput"), $("micBtn"), micSay));
+    $("saveBtn").addEventListener("click", stopMic);
+    $("retakeBtn").addEventListener("click", stopMic);
+  }
+
+  async function optimize() {
+    const st = $("optStatus"); const say = (m, c) => { st.className = "status" + (c ? " " + c : ""); st.textContent = m; };
+    const key = $("keyInput").value.trim();
+    const todo = items.filter(it => !it.done);
+    if (!todo.length) { say("No hay paradas pendientes.", "err"); return; }
+    const startText = $("startInput").value.trim();
+    $("optBtn").disabled = true;
+    try {
+      for (let i = 0; i < todo.length; i++) {
+        const it = todo[i];
+        if (typeof it.lat !== "number") {
+          say("Ubicando direcciones… " + (i + 1) + "/" + todo.length);
+          const g = await geocode(it.address, key);
+          if (g) { it.lat = g.lat; it.lng = g.lng; }
+        }
+      }
+      save();
+      let located = todo.filter(it => typeof it.lat === "number");
+      // Una dirección ubicada a más de 150 km del resto casi siempre es un error (misma calle en otra ciudad o país).
+      const far = [];
+      if (located.length >= 3) {
+        const med = (a) => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
+        const c = { lat: med(located.map(p => p.lat)), lng: med(located.map(p => p.lng)) };
+        located = located.filter(p => { const ok = kmBetween(p, c) <= 150; if (!ok) { far.push(p.num); delete p.lat; delete p.lng; } return ok; });
+        if (far.length) save();
+      }
+      const missing = todo.length - located.length;
+      if (!located.length) { say("No se encontró ninguna dirección. Revisa que tengan calle, número y ciudad.", "err"); return; }
+      let start;
+      if (startText) { say("Ubicando el punto de partida…"); start = await geocode(startText, key); if (!start) { say("No encontré el punto de partida. Escríbelo con calle, número y ciudad.", "err"); return; } }
+      else start = { lat: located[0].lat, lng: located[0].lng };
+      const back = $("returnChk").checked;
+      if (!key) {
+        say("Calculando la mejor ruta…");
+        let res, note = "";
+        const few = located.slice(0, 99);
+        try { res = await routeValhalla(start, few, back); }
+        catch (e1) {
+          try { res = await routeOSRM(start, few, back); }
+          catch (e2) { res = await routeLocal(start, few, back); note = " (orden aproximado: " + (e1.message || e1) + " / " + (e2.message || e2) + ")"; }
+        }
+        if (!res.line || res.line.length < 2) {
+          try {
+            const pts = [start, ...res.order.map(byNum), ...(back ? [start] : [])];
+            const u = "https://router.project-osrm.org/route/v1/driving/" + pts.map(p => p.lng.toFixed(6) + "," + p.lat.toFixed(6)).join(";") + "?geometries=geojson&overview=full";
+            const r = await fetch(u); const j = await r.json();
+            if (r.ok && j.code === "Ok" && j.routes && j.routes[0]) res.line = j.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+          } catch {}
+        }
+        const min = Math.round(res.s / 60);
+        route = { order: res.order, line: res.line, start: startText ? start : null,
+          summary: (res.m / 1000).toFixed(1) + " km · " + (min >= 60 ? Math.floor(min / 60) + " h " + (min % 60) + " min" : min + " min") + (back ? " ida y vuelta" : "") };
+        save(); refresh(true);
+        const warn = far.length ? "Nº " + far.map(pad).join(", ") + " quedó lejos del resto y no se incluyó; revisa la dirección (agrega ciudad) o pon el país en Ajustes. "
+          : (missing ? missing + " dirección(es) no se encontraron en el mapa y quedaron sin ordenar. " : "");
+        say(warn + (located.length > 99 ? "Se ordenaron las primeras 99 paradas." : "Ruta optimizada.") + note, warn || note ? "err" : "ok");
+        return;
+      }
+      // TomTom reordena las paradas intermedias entre salida y llegada fijas (máx. 150).
+      // Sin regreso: se calcula ida y vuelta y se descarta el último tramo.
+      const stops = located.slice(0, 148);
+      const pts = [start, ...stops, start];
+      say("Calculando la mejor ruta…");
+      const u = new URL("https://api.tomtom.com/routing/1/calculateRoute/" + pts.map(p => p.lat + "," + p.lng).join(":") + "/json");
+      u.searchParams.set("key", key); u.searchParams.set("computeBestOrder", "true"); u.searchParams.set("routeType", "fastest");
+      u.searchParams.set("traffic", "true"); u.searchParams.set("travelMode", "car");
+      const r = await fetch(u);
+      if (r.status === 403 || r.status === 401) throw new Error("clave de TomTom no válida");
+      if (!r.ok) { const t = await r.text().catch(() => ""); throw new Error("TomTom respondió " + r.status + (t ? ": " + t.slice(0, 120) : "")); }
+      const j = await r.json();
+      const ow = (j.optimizedWaypoints || []).slice().sort((a, b) => a.optimizedIndex - b.optimizedIndex);
+      const orderIdx = ow.length ? ow.map(w => w.providedIndex) : stops.map((_, i) => i);
+      const order = orderIdx.map(i => stops[i].num);
+      const legs = (j.routes && j.routes[0] && j.routes[0].legs) || [];
+      const useLegs = back ? legs : legs.slice(0, -1);
+      let m = 0, s = 0; const line = [];
+      useLegs.forEach(l => { m += l.summary.lengthInMeters; s += l.summary.travelTimeInSeconds; (l.points || []).forEach(p => line.push([p.latitude, p.longitude])); });
+      const min = Math.round(s / 60);
+      route = {
+        order, line, start: startText ? start : null,
+        summary: (m / 1000).toFixed(1) + " km · " + (min >= 60 ? Math.floor(min / 60) + " h " + (min % 60) + " min" : min + " min") + (back ? " ida y vuelta" : ""),
+      };
+      save(); refresh(true);
+      say(missing ? missing + " dirección(es) no se encontraron en el mapa y quedaron sin ordenar." : (located.length > 148 ? "Se ordenaron las primeras 148 paradas." : "Ruta optimizada."), missing ? "err" : "ok");
+    } catch (e) {
+      route = route && route.summary && !/^0\.0 km/.test(route.summary) ? route : null; render();
+      say("No se pudo optimizar: " + (e.message || e), "err");
+    } finally { $("optBtn").disabled = false; }
+  }
+  $("optBtn").addEventListener("click", optimize);
+  // Después de guardar, la cámara queda lista para la siguiente etiqueta.
+  $("saveBtn").addEventListener("click", () => { if ($("stage").hidden) resumeScan(); });
+
+  // Ruta sin clave, opción 1: optimizador público de Valhalla (FOSSGIS). Fija la primera y la última
+  // parada; se manda ida y vuelta a la salida y, si no hay regreso, se descarta el último tramo.
+  function decodePolyline6(str) {
+    const out = []; let i = 0, lat = 0, lng = 0;
+    while (i < str.length) {
+      for (const k of [0, 1]) {
+        let b, shift = 0, res = 0;
+        do { b = str.charCodeAt(i++) - 63; res |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+        const d = (res & 1) ? ~(res >> 1) : (res >> 1);
+        if (k === 0) lat += d; else lng += d;
+      }
+      out.push([lat / 1e6, lng / 1e6]);
+    }
+    return out;
+  }
+  async function routeValhalla(start, stops, back) {
+    if (stops.length < 2) throw new Error("Valhalla necesita al menos 2 paradas");
+    const locs = [start, ...stops, start].map(p => ({ lat: +p.lat.toFixed(6), lon: +p.lng.toFixed(6) }));
+    const q = { locations: locs, costing: "auto", units: "kilometers", directions_options: { language: "es-ES" }, directions_type: "none" };
+    const r = await fetch("https://valhalla1.openstreetmap.de/optimized_route?json=" + encodeURIComponent(JSON.stringify(q)));
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.trip) throw new Error("Valhalla " + r.status + (j.error ? ": " + j.error : ""));
+    const t = j.trip;
+    const order = t.locations.slice(1, -1).map(l => stops[l.original_index - 1]).filter(Boolean).map(p => p.num);
+    const legs = back ? t.legs : t.legs.slice(0, -1);
+    let m = 0, s = 0; const line = [];
+    legs.forEach(l => { m += (l.summary.length || 0) * 1000; s += l.summary.time || 0; decodePolyline6(l.shape || "").forEach(c => line.push(c)); });
+    return { order, line, m, s };
+  }
+
+  // Ruta sin clave, opción 2: servidor público de OSRM (OpenStreetMap). Calcula ida y vuelta desde la salida;
+  // si no hay regreso, se descarta el último tramo.
+  async function routeOSRM(start, stops, back) {
+    const pts = [start, ...stops];
+    const u = "https://router.project-osrm.org/trip/v1/driving/" + pts.map(p => p.lng.toFixed(6) + "," + p.lat.toFixed(6)).join(";") +
+      "?roundtrip=true&source=first&geometries=geojson&overview=full";
+    const r = await fetch(u);
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.code !== "Ok" || !j.trips || !j.trips[0]) throw new Error("servidor de rutas " + r.status + (j.code ? " " + j.code : "") + (j.message ? ": " + j.message : ""));
+    const trip = j.trips[0];
+    const pos = j.waypoints.map(w => w.waypoint_index); // posición de cada punto dentro del recorrido
+    const order = stops.map((p, i) => ({ num: p.num, at: pos[i + 1] })).sort((a, b) => a.at - b.at).map(x => x.num);
+    let coords = trip.geometry.coordinates.map(c => [c[1], c[0]]);
+    let m = trip.distance, s = trip.duration;
+    if (!back && trip.legs.length) {
+      const last = trip.legs[trip.legs.length - 1]; m -= last.distance; s -= last.duration;
+      const lastStop = stops.find(p => p.num === order[order.length - 1]);
+      const d = (c) => (c[0] - lastStop.lat) ** 2 + (c[1] - lastStop.lng) ** 2;
+      let best = 0; coords.forEach((c, i) => { if (d(c) <= d(coords[best]) + 1e-10) best = i; });
+      coords = coords.slice(0, best + 1);
+    }
+    return { order, line: coords, m, s };
+  }
+
+  function kmBetween(a, b) {
+    const R = 6371, r = Math.PI / 180, dLat = (b.lat - a.lat) * r, dLng = (b.lng - a.lng) * r;
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * r) * Math.cos(b.lat * r) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+  // Respaldo si el servidor de rutas falla: orden por cercanía (vecino más cercano + mejora 2-opt),
+  // y el trazado por calles del servidor si responde; si no, líneas rectas.
+  async function routeLocal(start, stops, back) {
+    const left = stops.slice(), path = []; let cur = start;
+    while (left.length) { let bi = 0; for (let i = 1; i < left.length; i++) if (kmBetween(cur, left[i]) < kmBetween(cur, left[bi])) bi = i; cur = left.splice(bi, 1)[0]; path.push(cur); }
+    const full = [start, ...path, ...(back ? [start] : [])];
+    const end = back ? full.length - 1 : full.length;
+    for (let pass = 0, imp = true; imp && pass < 50; pass++) {
+      imp = false;
+      for (let i = 1; i < end - 1; i++) for (let j = i + 1; j < end; j++) {
+        const a = full[i - 1], b = full[i], c = full[j], d = full[j + 1];
+        if (kmBetween(a, c) + (d ? kmBetween(b, d) : 0) + 1e-9 < kmBetween(a, b) + (d ? kmBetween(c, d) : 0)) { full.splice(i, j - i + 1, ...full.slice(i, j + 1).reverse()); imp = true; }
+      }
+    }
+    const order = full.slice(1, end).map(p => p.num);
+    let line = full.map(p => [p.lat, p.lng]), m = 0, s = 0;
+    for (let i = 1; i < full.length; i++) m += kmBetween(full[i - 1], full[i]) * 1300; // ~30% más que en línea recta
+    s = m / 8.3; // ~30 km/h en ciudad
+    try {
+      const u = "https://router.project-osrm.org/route/v1/driving/" + full.map(p => p.lng.toFixed(6) + "," + p.lat.toFixed(6)).join(";") + "?geometries=geojson&overview=full";
+      const r = await fetch(u); const j = await r.json();
+      if (r.ok && j.code === "Ok" && j.routes && j.routes[0]) { line = j.routes[0].geometry.coordinates.map(c => [c[1], c[0]]); m = j.routes[0].distance; s = j.routes[0].duration; }
+    } catch {}
+    return { order, line, m, s };
+  }
+
+  // ---------- ajustes, exportar ----------
+  [["keyInput", "key"], ["geminiInput", "gemini"], ["startInput", "start"], ["countryInput", "country"], ["cartoInput", "carto"]].forEach(([id, k]) => {
+    $(id).value = store.get(k, "");
+    $(id).addEventListener("change", () => store.set(k, $(id).value.trim()));
+  });
+  $("cartoInput").addEventListener("change", () => setBasemap($("mapStyle").value));
+  if (store.get("country", null) === null) { $("countryInput").value = "AR"; store.set("country", "AR"); }
+  $("returnChk").checked = store.get("back", false);
+  $("returnChk").addEventListener("change", () => store.set("back", $("returnChk").checked));
+  $("zaChk").checked = store.get("za", true);
+  $("zaChk").addEventListener("change", () => { store.set("za", $("zaChk").checked); refresh(false); });
+  if (NATIVE) { $("nativeInfo").hidden = false; $("nativeInfo").textContent = "App de Android · " + ["Camera", "BackgroundGeolocation", "TextToSpeech", "LocalNotifications"].map(n => n + (plug(n) ? " ✓" : " ✗")).join(" · "); }
+  $("arriveChk").checked = store.get("arrive", true);
+  $("arriveChk").addEventListener("change", () => store.set("arrive", $("arriveChk").checked));
+  $("arriveDist").value = store.get("arriveDist", "150");
+  $("arriveDist").addEventListener("change", () => store.set("arriveDist", $("arriveDist").value.trim()));
+
+  $("clearDone").addEventListener("click", () => {
+    const n = items.filter(i => i.done).length; if (!n) { return; }
+    items = items.filter(i => !i.done); if (route) route.order = route.order.filter(x => byNum(x)); save(); refresh(false);
+  });
+  $("exportBtn").addEventListener("click", () => {
+    const q = (s) => '"' + String(s).replace(/"/g, '""') + '"';
+    const lt = letters();
+    const rows = orderedItems().map(it => [route ? (route.order.indexOf(it.num) + 1 || "") : "", lt.get(it.num) || "", pad(it.num), q(it.address), q(it.ref || ""), it.lat ?? "", it.lng ?? "", it.done ? "si" : "no"].join(","));
+    const csv = "﻿parada,letra,numero,direccion,referencia,lat,lng,entregada\n" + rows.join("\n") + "\n";
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    a.download = "paradas.csv"; document.body.append(a); a.click(); a.remove();
+  });
+
+  refresh(true);
+})();
+</script>
+<script>
+// ---------- cuenta: usuario y contraseña (Supabase) y link de pago ----------
+// Mientras supabaseUrl esté vacío, la app funciona como siempre, sin pedir cuenta.
+// Las cuentas se activan a mano en Supabase (tabla «perfiles», columna «activo») cuando se acredita el pago.
+const CUENTA = {
+  supabaseUrl: "",      // ej.: https://xxxx.supabase.co
+  supabaseAnonKey: "",  // clave pública «anon» del proyecto (se puede publicar; la seguridad la dan las reglas RLS)
+  payUrl: "",           // link de pago de Mercado Pago
+};
+(() => {
+  const $ = (id) => document.getElementById(id);
+  document.querySelectorAll(".payLink").forEach(a => { if (CUENTA.payUrl) { a.href = CUENTA.payUrl; a.hidden = false; } else a.hidden = true; });
+  if (CUENTA.payUrl) $("accountCard").hidden = false;
+  if (!CUENTA.supabaseUrl || !CUENTA.supabaseAnonKey) return;
+
+  $("auth").hidden = false;
+  const say = (id, m, c) => { const el = $(id); el.className = "status" + (c ? " " + c : ""); el.textContent = m; };
+  let mode = "in";
+  const setMode = (m) => {
+    mode = m; $("tabIn").className = "btn" + (m === "in" ? " on" : ""); $("tabUp").className = "btn" + (m === "up" ? " on" : "");
+    $("authGo").textContent = m === "in" ? "Entrar" : "Crear cuenta"; $("authPass").autocomplete = m === "in" ? "current-password" : "new-password"; say("authMsg", "");
+  };
+  $("tabIn").addEventListener("click", () => setMode("in"));
+  $("tabUp").addEventListener("click", () => setMode("up"));
+
+  const sc = document.createElement("script");
+  sc.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js";
+  sc.onerror = () => say("authMsg", "No se pudo conectar. Revisa tu internet y vuelve a abrir la app.", "err");
+  sc.onload = start;
+  document.head.append(sc);
+
+  function start() {
+    const sb = window.supabase.createClient(CUENTA.supabaseUrl, CUENTA.supabaseAnonKey);
+    const err = (e) => {
+      const m = String(e && e.message || e);
+      if (/invalid login/i.test(m)) return "Correo o contraseña incorrectos.";
+      if (/already registered/i.test(m)) return "Ese correo ya tiene cuenta. Toca «Entrar».";
+      if (/password/i.test(m) && /6/.test(m)) return "La contraseña tiene que tener al menos 6 caracteres.";
+      if (/email.*invalid|invalid.*email/i.test(m)) return "Ese correo no es válido.";
+      if (/not confirmed/i.test(m)) return "Confirma tu correo con el mail que te llegó y vuelve a entrar.";
+      return m;
+    };
+    async function check(user) {
+      $("authForm").hidden = true; $("authPay").hidden = true;
+      const { data, error } = await sb.from("perfiles").select("activo").eq("id", user.id).maybeSingle();
+      $("accountCard").hidden = false; $("logoutBtn").hidden = false; $("accountWho").textContent = "Cuenta: " + user.email;
+      if (!error && data && data.activo) { $("auth").hidden = true; return; }
+      $("auth").hidden = false; $("authPay").hidden = false; $("authWho").textContent = user.email;
+      if (!CUENTA.payUrl) say("authPayMsg", "Pedile el link de pago a quien te dio la app.");
+      else say("authPayMsg", error ? "No se pudo revisar la cuenta (" + error.message + ")." : "", error ? "err" : "");
+    }
+    async function logout() { await sb.auth.signOut(); location.reload(); }
+    $("authOut").addEventListener("click", logout);
+    $("logoutBtn").addEventListener("click", logout);
+    $("authCheck").addEventListener("click", async () => {
+      say("authPayMsg", "Revisando…");
+      const { data } = await sb.auth.getUser();
+      if (data && data.user) { await check(data.user); if (!$("authPay").hidden) say("authPayMsg", "Todavía no figura el pago. Si ya pagaste, puede tardar un rato.", "err"); }
+    });
+    $("authGo").addEventListener("click", async () => {
+      const email = $("authEmail").value.trim(), password = $("authPass").value;
+      if (!email || !password) { say("authMsg", "Completa el correo y la contraseña.", "err"); return; }
+      $("authGo").disabled = true; say("authMsg", mode === "in" ? "Entrando…" : "Creando la cuenta…");
+      try {
+        const r = mode === "in" ? await sb.auth.signInWithPassword({ email, password }) : await sb.auth.signUp({ email, password });
+        if (r.error) throw r.error;
+        if (!r.data.session) { say("authMsg", "Te mandamos un mail para confirmar el correo. Confirmalo y después toca «Entrar».", "ok"); setMode("in"); return; }
+        await check(r.data.user);
+      } catch (e) { say("authMsg", err(e), "err"); }
+      finally { $("authGo").disabled = false; }
+    });
+    sb.auth.getSession().then(({ data }) => { if (data && data.session) check(data.session.user); });
+  }
+})();
+</script>
+</body>
+</html>
