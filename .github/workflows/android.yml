@@ -3,7 +3,7 @@ name: App de Android (APK)
 on:
   push:
     branches: [main]
-    paths: ["index.html", "capacitor/**", ".github/workflows/android.yml"]
+    paths: ["index.html", "img/**", "capacitor/**", ".github/workflows/android.yml"]
   workflow_dispatch:
 
 permissions:
@@ -36,7 +36,7 @@ jobs:
         run: npm install --no-audit --no-fund
 
       - name: Copiar la app web
-        run: mkdir -p www && cp ../index.html www/index.html
+        run: mkdir -p www && cp ../index.html ../manifest.webmanifest www/ && cp -r ../img www/img
 
       - name: Crear el proyecto de Android
         run: |
@@ -46,6 +46,8 @@ jobs:
           grep -n "permission" android/app/src/main/AndroidManifest.xml
           # nombre del aviso fijo de ubicación
           sed -i 's#</resources>#    <string name="capacitor_background_geolocation_notification_channel_name">Ubicación del reparto</string>\n</resources>#' android/app/src/main/res/values/strings.xml
+          # ícono de la app
+          cp -r res/* android/app/src/main/res/
           npx cap sync android
 
       - name: Armar el APK
