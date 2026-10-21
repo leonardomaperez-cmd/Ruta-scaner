@@ -280,16 +280,8 @@ ol.stops li.done .addr { text-decoration: line-through; }
       <select id="mapStyle">
         <option value="fiord">Fiord (azul oscuro)</option>
         <option value="moderno">Moderno</option>
-        <option value="suave">Suave</option>
-        <option value="noche">Noche</option>
-        <option value="osm">OpenStreetMap</option>
-        <option value="claro">Calles claras</option>
-        <option value="oscuro">Oscuro</option>
-        <option value="satelite">Satélite (Esri)</option>
+        <option value="satelite">Satélite</option>
       </select>
-      <label class="label" for="cartoInput">Clave de CARTO (opcional)</label>
-      <input id="cartoInput" type="password" autocomplete="off" placeholder="Pega tu clave de CARTO">
-      <span class="note">Con la clave, "Calles claras" y "Oscuro" usan los mapas de CARTO. Sin la clave usan los de Esri. Es gratis: pedila en <a href="https://carto.com/basemaps/apikey/" target="_blank" rel="noopener">carto.com/basemaps/apikey</a>.</span>
       <label class="label" for="countryInput">País (código de 2 letras, opcional)</label>
       <input id="countryInput" type="text" maxlength="2" placeholder="Ej.: AR, MX, CL, ES">
       <span class="note">El país ayuda a que TomTom no confunda calles con el mismo nombre en otros países.</span>
@@ -343,21 +335,14 @@ ol.stops li.done .addr { text-decoration: line-through; }
 
   // ---------- mapa ----------
   const map = L.map("map", { zoomControl: true }).setView([-34.6037, -58.3816], 11);
-  // Fondos de mapa gratuitos. Claro y Oscuro usan CARTO si hay clave (gratis) en Ajustes; si no, Esri.
+  // Fondos de mapa gratuitos y sin clave: Fiord y Moderno (OpenFreeMap) y Satélite (Esri). OSM queda de respaldo.
   const OSM = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
-  const CARTO_ATT = OSM + ' &copy; <a href="https://carto.com/attributions">CARTO</a>';
-  const CARTO = {
-    claro: ["https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png?key=", CARTO_ATT, 20],
-    oscuro: ["https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png?key=", CARTO_ATT, 20],
-  };
   const BASEMAPS = {
-    claro: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}", "Mapa &copy; Esri", 19],
     osm: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png", OSM, 19],
-    oscuro: ["https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}", "Mapa &copy; Esri", 19, 16],
     satelite: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", "Imágenes &copy; Esri", 19],
   };
   // Mapas modernos (vectoriales, nítidos al hacer zoom) de OpenFreeMap: gratis, sin clave y sin límite.
-  const VECTOR = { fiord: "fiord", moderno: "liberty", suave: "positron", noche: "dark" };
+  const VECTOR = { fiord: "fiord", moderno: "liberty" };
   let base = null;
   function setBasemap(name) {
     if (VECTOR[name] && L.maplibreGL) {
@@ -366,14 +351,12 @@ ol.stops li.done .addr { text-decoration: line-through; }
       return;
     }
     if (VECTOR[name]) name = "osm";
-    const ck = store.get("carto", "");
-    let b = BASEMAPS[name] || BASEMAPS.osm;
-    if (ck && CARTO[name]) b = [CARTO[name][0] + encodeURIComponent(ck), CARTO[name][1], CARTO[name][2]];
+    const b = BASEMAPS[name] || BASEMAPS.osm;
     if (base) map.removeLayer(base);
     base = L.tileLayer(b[0], { maxZoom: b[2], maxNativeZoom: b[3] || b[2], attribution: b[1] }).addTo(map);
   }
-  const savedStyle = store.get("mapStyleBeta2", "fiord");
-  setBasemap(savedStyle); $("mapStyle").value = BASEMAPS[savedStyle] || VECTOR[savedStyle] ? savedStyle : "fiord";
+  const savedStyle = ["fiord", "moderno", "satelite"].includes(store.get("mapStyleBeta2", "fiord")) ? store.get("mapStyleBeta2", "fiord") : "fiord";
+  setBasemap(savedStyle); $("mapStyle").value = savedStyle;
   $("mapStyle").addEventListener("change", () => { store.set("mapStyleBeta2", $("mapStyle").value); setBasemap($("mapStyle").value); });
 
   // ---------- mi ubicación: punto azul con el radio de precisión ----------
@@ -1263,11 +1246,10 @@ ol.stops li.done .addr { text-decoration: line-through; }
   }
 
   // ---------- ajustes, exportar ----------
-  [["keyInput", "key"], ["geminiInput", "gemini"], ["startInput", "start"], ["countryInput", "country"], ["cartoInput", "carto"]].forEach(([id, k]) => {
+  [["keyInput", "key"], ["geminiInput", "gemini"], ["startInput", "start"], ["countryInput", "country"]].forEach(([id, k]) => {
     $(id).value = store.get(k, "");
     $(id).addEventListener("change", () => store.set(k, $(id).value.trim()));
   });
-  $("cartoInput").addEventListener("change", () => setBasemap($("mapStyle").value));
   if (store.get("country", null) === null) { $("countryInput").value = "AR"; store.set("country", "AR"); }
   $("returnChk").checked = store.get("back", false);
   $("returnChk").addEventListener("change", () => store.set("back", $("returnChk").checked));
