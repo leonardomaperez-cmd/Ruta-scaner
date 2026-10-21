@@ -94,6 +94,13 @@ body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--body); ov
 /* cuenta: registro, ingreso y pago */
 #auth { position: fixed; inset: 0; z-index: 2000; background: var(--bg); color: var(--ink); overflow-y: auto; padding: 24px 16px calc(24px + env(safe-area-inset-bottom, 0px)); }
 #auth .wrap { max-width: 420px; }
+#perms { position: fixed; inset: 0; z-index: 2100; background: var(--bg); color: var(--ink); overflow-y: auto; padding: 24px 16px calc(24px + env(safe-area-inset-bottom, 0px)); }
+#perms .wrap { max-width: 420px; margin: 0 auto; display: grid; gap: 12px; }
+#perms h1 { margin: 8px 0 0; font: 700 1.6rem var(--display); text-transform: uppercase; letter-spacing: .03em; }
+#perms ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+#perms li { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+#perms li small { grid-column: 1; color: var(--muted); }
+#perms li b.st { grid-row: 1 / span 2; grid-column: 2; font-size: 1.2rem; }
 #auth h1 { margin: 8px 0 0; font: 700 1.8rem var(--display); text-transform: uppercase; letter-spacing: .03em; }
 .tabs2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .tabs2 button.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
@@ -293,6 +300,7 @@ ol.stops li.done .addr { text-decoration: line-through; }
       <button class="btn" id="logoutBtn" type="button" hidden>Cerrar sesión</button>
     </div>
     <p class="note" id="nativeInfo" hidden></p>
+    <button class="btn" id="permsBtn" type="button" hidden>Revisar permisos de la app</button>
     <p class="note">Las paradas se guardan en este teléfono. Exporta el CSV si quieres guardarlas aparte.</p>
    </div>
   </section>
@@ -428,7 +436,7 @@ ol.stops li.done .addr { text-decoration: line-through; }
   new LocateCtl().addTo(map);
   const locBtn = document.querySelector(".locate-btn");
   // si ya diste permiso antes, el punto aparece solo al abrir la app
-  if (NATIVE) startMe(false); // en la app de Android se sigue la ubicación desde que se abre
+  if (NATIVE && store.get("permsDone", false)) startMe(false); // en la app de Android se sigue la ubicación desde que se abre (la primera vez, después de pedir los permisos)
   else try { navigator.permissions && navigator.permissions.query({ name: "geolocation" }).then(st => { if (st.state === "granted") startMe(false); }).catch(() => {}); } catch {}
   const layer = L.layerGroup().addTo(map);
   const pinIcon = (text, cls) => { const z = cls === "next" ? 38 : 32; return L.divIcon({ className: "", html: `<div class="pin ${cls || ""}"><span>${text}</span></div>`, iconSize: [z, z], iconAnchor: [z / 2, z], popupAnchor: [0, -z + 2] }); };
@@ -1265,7 +1273,61 @@ ol.stops li.done .addr { text-decoration: line-through; }
   $("returnChk").addEventListener("change", () => store.set("back", $("returnChk").checked));
   $("zaChk").checked = store.get("za", true);
   $("zaChk").addEventListener("change", () => { store.set("za", $("zaChk").checked); refresh(false); });
-  if (NATIVE) { $("nativeInfo").hidden = false; $("nativeInfo").textContent = "App de Android · " + ["Camera", "BackgroundGeolocation", "TextToSpeech", "LocalNotifications"].map(n => n + (plug(n) ? " ✓" : " ✗")).join(" · "); }
+  // ---------- app de Android: pide todos los permisos juntos la primera vez ----------
+  const PERMS = [
+    ["camera", "Cámara", "Para escanear las etiquetas"],
+    ["mic", "Micrófono", "Para dictar la referencia del paquete"],
+    ["location", "Ubicación", "Para verte en el mapa y avisarte al llegar"],
+    ["notif", "Notificaciones", "Para los avisos de llegada con la pantalla apagada"],
+    ["battery", "Sin ahorro de batería", "Para que Android no cierre la app mientras repartís"],
+  ];
+  const afterResume = () => new Promise(r => { let t = setTimeout(r, 15000); const f = () => { if (document.visibilityState === "visible") { clearTimeout(t); document.removeEventListener("visibilitychange", f); setTimeout(r, 400); } }; setTimeout(() => document.addEventListener("visibilitychange", f), 300); });
+  async function askOne(k) {
+    const P = plug("Permisos"), CAM = plug("Camera"), LN = plug("LocalNotifications");
+    try {
+      if (k === "camera") { const r = P ? await P.requestPermissions({ permissions: ["camera"] }) : CAM && await CAM.requestPermissions({ permissions: ["camera"] }); return r && r.camera === "granted"; }
+      if (k === "mic") {
+        if (P) { const r = await P.requestPermissions({ permissions: ["mic"] }); return r.mic === "granted"; }
+        const st = await navigator.mediaDevices.getUserMedia({ audio: true }); st.getTracks().forEach(t => t.stop()); return true;
+      }
+      if (k === "location") {
+        if (P) { const r = await P.requestPermissions({ permissions: ["location"] }); return r.location === "granted"; }
+        return await new Promise(r => navigator.geolocation.getCurrentPosition(() => r(true), () => r(false), { timeout: 15000 }));
+      }
+      if (k === "notif") { if (!LN) return false; const r = await LN.requestPermissions(); return r.display === "granted"; }
+      if (k === "battery") {
+        if (!P) return false;
+        const a = await P.battery(); if (a.ok) return true;
+        const w = afterResume(); await P.requestBattery(); await w; return (await P.battery()).ok;
+      }
+    } catch { return false; }
+    return false;
+  }
+  function permsScreen() {
+    let el = $("perms");
+    if (!el) {
+      el = document.createElement("div"); el.id = "perms";
+      el.innerHTML = '<div class="wrap"><h1>Permisos de la app</h1><span class="note">Para que todo funcione mientras repartís, la app necesita estos permisos. Tocá el botón y aceptá cada uno.</span><ul id="permList"></ul><button class="btn btn-primary" id="permGo" type="button">Dar permisos</button><button class="btn" id="permSet" type="button" hidden>Abrir ajustes del teléfono</button><button class="btn" id="permOk" type="button">Listo</button><span class="note" id="permMsg"></span></div>';
+      document.body.append(el);
+      $("permList").innerHTML = PERMS.map(([k, n, d]) => `<li data-k="${k}"><span>${n}</span><small>${d}</small><b class="st">○</b></li>`).join("");
+      $("permGo").addEventListener("click", async () => {
+        $("permGo").disabled = true; let bad = 0;
+        for (const [k] of PERMS) {
+          const li = el.querySelector(`li[data-k="${k}"] .st`); li.textContent = "…";
+          const ok = await askOne(k); li.textContent = ok ? "✓" : "✗"; if (!ok) bad++;
+        }
+        $("permGo").disabled = false; $("permGo").textContent = "Volver a pedir";
+        $("permSet").hidden = !bad;
+        $("permMsg").textContent = bad ? "Si algún permiso quedó en ✗, tocá «Abrir ajustes del teléfono», entrá en Permisos y activalo. En Ubicación elegí «Permitir solo con la app en uso» o «Todo el tiempo»." : "Todo listo. Ya podés usar la app tranquilo.";
+      });
+      $("permSet").addEventListener("click", () => { const P = plug("Permisos"); if (P) P.openSettings().catch(() => {}); });
+      $("permOk").addEventListener("click", () => { el.hidden = true; const first = !store.get("permsDone", false); store.set("permsDone", true); if (first) startMe(false); });
+    }
+    el.hidden = false;
+  }
+  if (NATIVE && !store.get("permsDone", false)) permsScreen();
+  if (NATIVE) { $("permsBtn").hidden = false; $("permsBtn").addEventListener("click", permsScreen); }
+  if (NATIVE) { $("nativeInfo").hidden = false; $("nativeInfo").textContent = "App de Android · " + ["Camera", "BackgroundGeolocation", "TextToSpeech", "LocalNotifications", "Permisos"].map(n => n + (plug(n) ? " ✓" : " ✗")).join(" · "); }
   $("arriveChk").checked = store.get("arrive", true);
   $("arriveChk").addEventListener("change", () => store.set("arrive", $("arriveChk").checked));
   $("arriveDist").value = store.get("arriveDist", "150");

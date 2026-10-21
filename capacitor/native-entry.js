@@ -5,4 +5,5 @@ import { TextToSpeech } from "@capacitor-community/text-to-speech";
 import { LocalNotifications } from "@capacitor/local-notifications";
 
 const BackgroundGeolocation = registerPlugin("BackgroundGeolocation");
-window.CapPlugins = { Camera, TextToSpeech, LocalNotifications, BackgroundGeolocation };
+const Permisos = registerPlugin("Permisos");
+window.CapPlugins = { Camera, TextToSpeech, LocalNotifications, BackgroundGeolocation, Permisos };
