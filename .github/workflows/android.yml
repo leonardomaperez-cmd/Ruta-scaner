@@ -36,7 +36,12 @@ jobs:
         run: npm install --no-audit --no-fund
 
       - name: Copiar la app web
-        run: mkdir -p www && cp ../index.html ../manifest.webmanifest www/ && cp -r ../img www/img
+        run: |
+          mkdir -p www && cp ../index.html ../manifest.webmanifest www/ && cp -r ../img www/img
+          # plugins nativos (cámara, GPS en segundo plano, voz, avisos) para la página
+          npx esbuild native-entry.js --bundle --format=iife --minify --outfile=www/native.js
+          sed -i 's#<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet#<script src="native.js"></script>\n<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet#' www/index.html
+          grep -n 'native.js' www/index.html
 
       - name: Crear el proyecto de Android
         run: |

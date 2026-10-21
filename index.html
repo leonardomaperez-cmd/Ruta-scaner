@@ -283,6 +283,7 @@ ol.stops li.done .addr { text-decoration: line-through; }
       <a class="btn payLink" target="_blank" rel="noopener" hidden>Pagar suscripción</a>
       <button class="btn" id="logoutBtn" type="button" hidden>Cerrar sesión</button>
     </div>
+    <p class="note" id="nativeInfo" hidden></p>
     <p class="note">Las paradas se guardan en este teléfono. Exporta el CSV si quieres guardarlas aparte.</p>
    </div>
   </section>
@@ -295,7 +296,7 @@ ol.stops li.done .addr { text-decoration: line-through; }
   const KEY = "ruta-escaner-v1";
   // App de Android (Capacitor): GPS y voz del teléfono siguen andando con la pantalla apagada o en otra app.
   const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
-  const plug = (n) => NATIVE ? (window.Capacitor.Plugins && window.Capacitor.Plugins[n]) || (window.Capacitor.registerPlugin && window.Capacitor.registerPlugin(n)) || null : null;
+  const plug = (n) => NATIVE ? (window.CapPlugins && window.CapPlugins[n]) || (window.Capacitor.Plugins && window.Capacitor.Plugins[n]) || null : null;
   const pad = (n) => String(n).padStart(4, "0");
   const store = {
     get(k, d) { try { const v = localStorage.getItem(KEY + ":" + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
@@ -845,7 +846,7 @@ ol.stops li.done .addr { text-decoration: line-through; }
       $("cam").srcObject = stream; await $("cam").play().catch(() => {});
     } catch (e) {
       stream = null;
-      $("scanHint").textContent = "No se pudo abrir la cámara aquí. Toca el botón amarillo para sacar la foto con la cámara del teléfono.";
+      $("scanHint").textContent = "No se pudo abrir la cámara aquí (" + (e && (e.name || e.message) || e) + "). Toca el botón amarillo para sacar la foto con la cámara del teléfono.";
     }
   }
   function stopCam() { if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } $("cam").srcObject = null; }
@@ -1183,6 +1184,7 @@ ol.stops li.done .addr { text-decoration: line-through; }
   $("returnChk").addEventListener("change", () => store.set("back", $("returnChk").checked));
   $("zaChk").checked = store.get("za", true);
   $("zaChk").addEventListener("change", () => { store.set("za", $("zaChk").checked); refresh(false); });
+  if (NATIVE) { $("nativeInfo").hidden = false; $("nativeInfo").textContent = "App de Android · " + ["Camera", "BackgroundGeolocation", "TextToSpeech", "LocalNotifications"].map(n => n + (plug(n) ? " ✓" : " ✗")).join(" · "); }
   $("arriveChk").checked = store.get("arrive", true);
   $("arriveChk").addEventListener("change", () => store.set("arrive", $("arriveChk").checked));
   $("arriveDist").value = store.get("arriveDist", "150");
