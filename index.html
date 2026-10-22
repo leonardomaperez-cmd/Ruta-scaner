@@ -111,6 +111,13 @@ body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--body); ov
 /* cuenta: registro, ingreso y pago */
 #auth { position: fixed; inset: 0; z-index: 2000; background: var(--bg); color: var(--ink); overflow-y: auto; padding: 24px 16px calc(24px + env(safe-area-inset-bottom, 0px)); }
 #auth .wrap { max-width: 420px; }
+#editBox { position: fixed; inset: 0; z-index: 1500; background: rgba(0,0,0,.55); display: flex; align-items: flex-end; justify-content: center; }
+#editBox .ebox { width: 100%; max-width: 520px; background: var(--bg); color: var(--ink); border-radius: 20px 20px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom, 0px)); display: grid; gap: 8px; box-shadow: 0 -6px 24px rgba(0,0,0,.35); }
+#editBox h3 { margin: 0 0 4px; font: 700 1.3rem var(--display); }
+#editBox .refrow { align-items: stretch; }
+#editBox textarea { min-height: 54px; background: var(--surface); }
+#editBox .erow { display: grid; grid-template-columns: 1fr 1.4fr; gap: 10px; margin-top: 6px; }
+@media (prefers-reduced-motion: no-preference) { #editBox:not([hidden]) .ebox { animation: up .22s ease-out; } }
 #perms { position: fixed; inset: 0; z-index: 2100; background: var(--bg); color: var(--ink); overflow-y: auto; padding: 24px 16px calc(24px + env(safe-area-inset-bottom, 0px)); }
 #perms .wrap { max-width: 420px; margin: 0 auto; display: grid; gap: 12px; }
 #perms h1 { margin: 8px 0 0; font: 700 1.6rem var(--display); text-transform: uppercase; letter-spacing: .03em; }
@@ -610,36 +617,13 @@ ol.stops li.done .dchk { background: var(--accent); border-color: transparent; c
         <button class="mini" type="button" data-a="edit">Editar</button>
         <button class="mini" type="button" data-a="done">${it.done ? "Deshacer" : "Entregada"}</button>
         <button class="mini" type="button" data-a="del">Eliminar</button></div>`;
-      d.querySelector('[data-a="edit"]').addEventListener("click", edit);
+      d.querySelector('[data-a="edit"]').addEventListener("click", () => { map.closePopup(); openEdit(it); });
       d.querySelector('[data-a="done"]').addEventListener("click", () => { it.done = !it.done; save(); map.closePopup(); refresh(false); });
       d.querySelector('[data-a="del"]').addEventListener("click", (e) => {
         const b = e.currentTarget;
         if (b.dataset.sure) { map.closePopup(); removeItem(it); toast("Nº " + pad(it.num) + " eliminada"); return; }
         b.dataset.sure = "1"; b.textContent = "¿Seguro? Toca de nuevo"; b.classList.add("confirm");
       });
-    };
-    const edit = () => {
-      d.innerHTML = `<b>Editar Nº ${pad(it.num)}</b>
-        <label class="label">Dirección</label><textarea rows="2"></textarea>
-        <label class="label">Referencia</label>
-        <div class="refrow"><input type="text" placeholder="Ej.: portón negro">${SR ? '<button class="btn mic" type="button" aria-label="Dictar la referencia">🎤</button>' : ""}</div>
-        <span class="note"></span>
-        <div class="pacts"><button class="mini" type="button" data-a="ok">Guardar</button><button class="mini" type="button" data-a="no">Cancelar</button></div>`;
-      const ta = d.querySelector("textarea"), inp = d.querySelector("input"), note = d.querySelector(".note"), mic = d.querySelector(".mic");
-      ta.value = it.address; inp.value = it.ref || "";
-      if (mic) mic.addEventListener("click", () => dictate(inp, mic, (m) => { note.textContent = m; }));
-      d.querySelector('[data-a="no"]').addEventListener("click", () => { stopMic(); view(); });
-      d.querySelector('[data-a="ok"]').addEventListener("click", async () => {
-        stopMic();
-        const na = ta.value.replace(/\s+/g, " ").trim(), nr = inp.value.replace(/\s+/g, " ").trim();
-        if (!na) { note.textContent = "La dirección no puede quedar vacía."; return; }
-        const moved = na !== it.address;
-        it.address = na; if (nr) it.ref = nr; else delete it.ref;
-        if (moved) { delete it.lat; delete it.lng; }
-        save(); map.closePopup(); refresh(false); toast("Nº " + pad(it.num) + " actualizada");
-        if (moved) { try { const g = await geocode(na, $("keyInput").value.trim()); if (g) { it.lat = g.lat; it.lng = g.lng; save(); refresh(false); } else toast("No encontré la nueva dirección en el mapa", true); } catch {} }
-      });
-      setTimeout(() => ta.focus(), 50);
     };
     view();
     return d;
@@ -720,12 +704,7 @@ ol.stops li.done .dchk { background: var(--accent); border-color: transparent; c
         see.disabled = typeof it.lat !== "number";
         see.addEventListener("click", () => { map.setView([it.lat, it.lng], 16); closeSheets(); });
         const ed = document.createElement("button"); ed.type = "button"; ed.innerHTML = svg("edit") + "<span>Editar</span>";
-        ed.addEventListener("click", async () => {
-          const v = prompt("Dirección del Nº " + pad(it.num), it.address); if (v == null) return;
-          const nv = v.replace(/\s+/g, " ").trim(); if (!nv || nv === it.address) return;
-          it.address = nv; delete it.lat; delete it.lng; save(); refresh(false);
-          try { const g = await geocode(nv, $("keyInput").value.trim()); if (g) { it.lat = g.lat; it.lng = g.lng; save(); refresh(true); } } catch {}
-        });
+        ed.addEventListener("click", () => openEdit(it));
         const del = document.createElement("button"); del.type = "button"; del.className = "rdel" + (pendingDelete === it.num ? " confirm" : "");
         del.innerHTML = svg("del") + "<span>" + (pendingDelete === it.num ? "¿Seguro?" : "Borrar") + "</span>";
         del.addEventListener("click", () => {
@@ -1160,10 +1139,10 @@ ol.stops li.done .dchk { background: var(--accent); border-color: transparent; c
   const LISTEN = "Te escucho… toca 🎤 para terminar.";
   function stopMic() { if (rec) { try { rec.stop(); } catch {} } }
   // Dicta en «input» (agrega al final de lo que ya hay). «say» muestra mensajes.
-  function dictate(input, btn, say) {
+  function dictate(input, btn, say, replace) {
     if (rec) { stopMic(); return; }
     rec = new SR(); rec.lang = "es-AR"; rec.interimResults = true; rec.continuous = false;
-    const before = input.value.trim(); let last = "";
+    const before = replace ? "" : input.value.trim(); let last = "";
     rec.onresult = (e) => {
       const txt = Array.from(e.results).map(r => r[0].transcript).join(" ").trim();
       input.value = (before ? before + ", " : "") + txt;
@@ -1171,6 +1150,39 @@ ol.stops li.done .dchk { background: var(--accent); border-color: transparent; c
     rec.onerror = (e) => { last = e.error === "not-allowed" ? "Permite el micrófono para dictar la referencia." : e.error === "no-speech" ? "No te escuché. Toca 🎤 y habla." : "No se pudo usar el micrófono (" + e.error + ")."; say(last); };
     rec.onend = () => { rec = null; btn.classList.remove("on"); if (!last) say(""); };
     try { rec.start(); btn.classList.add("on"); say(LISTEN); } catch (e) { rec = null; say("No se pudo usar el micrófono."); }
+  }
+  // ventana para editar dirección y referencia (escribiendo o por audio)
+  function openEdit(it) {
+    let el = $("editBox");
+    if (!el) {
+      el = document.createElement("div"); el.id = "editBox"; el.hidden = true;
+      el.innerHTML = '<div class="ebox" role="dialog" aria-modal="true" aria-labelledby="editTitle"><h3 id="editTitle"></h3>'
+        + '<label class="label" for="editAddr">Dirección</label><div class="refrow"><textarea id="editAddr" rows="2"></textarea><button class="btn mic" id="editAddrMic" type="button" aria-label="Dictar la dirección">🎤</button></div>'
+        + '<label class="label" for="editRef">Referencia</label><div class="refrow"><textarea id="editRef" rows="2" placeholder="Ej.: portón negro, timbre 2"></textarea><button class="btn mic" id="editRefMic" type="button" aria-label="Dictar la referencia">🎤</button></div>'
+        + '<span class="note" id="editNote"></span><div class="erow"><button class="btn" id="editNo" type="button">Cancelar</button><button class="btn btn-primary" id="editOk" type="button">Guardar</button></div></div>';
+      document.body.append(el);
+      if (!SR) { $("editAddrMic").hidden = true; $("editRefMic").hidden = true; }
+      const note = (m) => { $("editNote").textContent = m; };
+      $("editAddrMic").addEventListener("click", () => dictate($("editAddr"), $("editAddrMic"), note, true));
+      $("editRefMic").addEventListener("click", () => dictate($("editRef"), $("editRefMic"), note, true));
+      const close = () => { stopMic(); el.hidden = true; };
+      $("editNo").addEventListener("click", close);
+      el.addEventListener("click", (e) => { if (e.target === el) close(); });
+      $("editOk").addEventListener("click", async () => {
+        const cur = el._it; stopMic();
+        const na = $("editAddr").value.replace(/\s+/g, " ").trim(), nr = $("editRef").value.replace(/\s+/g, " ").trim();
+        if (!na) { note("La dirección no puede quedar vacía."); return; }
+        const moved = na !== cur.address;
+        cur.address = na; if (nr) cur.ref = nr; else delete cur.ref;
+        if (moved) { delete cur.lat; delete cur.lng; }
+        save(); el.hidden = true; refresh(false); toast("Nº " + pad(cur.num) + " actualizada");
+        if (moved) { try { const g = await geocode(na, $("keyInput").value.trim()); if (g) { cur.lat = g.lat; cur.lng = g.lng; save(); refresh(false); } else toast("No encontré la nueva dirección en el mapa", true); } catch {} }
+      });
+    }
+    el._it = it;
+    $("editTitle").textContent = "Editar Nº " + pad(it.num);
+    $("editAddr").value = it.address; $("editRef").value = it.ref || ""; $("editNote").textContent = "";
+    el.hidden = false; setTimeout(() => $("editAddr").focus(), 50);
   }
   if (SR) {
     $("micBtn").hidden = false;
