@@ -142,7 +142,23 @@ ol.stops { list-style: none; margin: 0; padding: 0; background: var(--surface); 
 ol.stops li { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: start; padding: 10px 12px; border-top: 1px solid var(--line); }
 ol.stops li:first-child { border-top: 0; }
 ol.stops li.done { opacity: .55; }
-ol.stops li.done .addr { text-decoration: line-through; }
+ol.stops li.done .addr b { text-decoration: line-through; }
+/* lista de paradas minimalista */
+ol.stops li { grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; padding: 12px 14px; cursor: pointer; }
+ol.stops li.open { background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
+.sbadge { display: grid; place-items: center; min-width: 46px; height: 34px; padding: 0 8px; border-radius: 10px; background: var(--accent); color: var(--accent-ink); font: 700 .95rem var(--display); letter-spacing: .01em; }
+.sbadge.none { background: var(--line); color: var(--muted); }
+.addr b { display: block; font: 600 1rem/1.3 var(--body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+ol.stops li.open .addr b, ol.stops li.open .addr small { white-space: normal; }
+.addr small { display: block; color: var(--muted); font: 500 .8rem var(--body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+.dchk { width: 38px; height: 38px; border-radius: 50%; border: 2px solid var(--line); background: none; color: var(--muted); display: grid; place-items: center; cursor: pointer; padding: 0; }
+.dchk svg, .racts svg { width: 20px; height: 20px; }
+ol.stops li.done .dchk { background: var(--accent); border-color: transparent; color: var(--accent-ink); }
+.racts { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.racts > * { display: grid; justify-items: center; gap: 3px; padding: 8px 4px; border: 0; border-radius: 10px; background: var(--bg); color: var(--ink); font: 600 .75rem var(--body); text-decoration: none; cursor: pointer; }
+.racts > *[disabled] { opacity: .4; }
+.racts .rdel { color: var(--bad); }
+.racts .rdel.confirm { background: var(--bad); color: #fff; }
 .badge { display: grid; place-items: center; min-width: 2.2em; height: 2.2em; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font: 700 .95rem var(--display); }
 .ord { display: flex; gap: 4px; align-items: center; }
 .letter { display: grid; place-items: center; min-width: 2em; height: 2.2em; padding: 0 4px; border-radius: 8px; background: var(--ink); color: var(--bg); font: 700 .95rem var(--mono); }
@@ -152,8 +168,6 @@ ol.stops li.done .addr { text-decoration: line-through; }
 #stage.is-verify .newonly { display: none !important; }
 .badge.none { background: var(--bg); color: var(--muted); border-color: var(--line); }
 .addr { min-width: 0; overflow-wrap: anywhere; }
-.addr small { display: block; color: var(--muted); font: 500 .8rem var(--mono); }
-.addr small.ref { font: italic 500 .85rem var(--body); margin-top: 2px; }
 .acts { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; max-width: 9.5rem; }
 .mini { background: none; border: 1px solid var(--line); color: var(--ink); font: 500 .8rem var(--body); border-radius: 8px; padding: 6px 8px; cursor: pointer; text-decoration: none; }
 .mini.confirm { color: var(--bad); border-color: var(--bad); font-weight: 600; }
@@ -663,7 +677,7 @@ ol.stops li.done .addr { text-decoration: line-through; }
   }
 
   // ---------- lista ----------
-  let pendingDelete = null;
+  let pendingDelete = null, openRow = null;
   function render() {
     $("nextTag").textContent = pad(nextNum());
     $("countTab").textContent = items.length ? String(items.length) : "";
@@ -674,38 +688,53 @@ ol.stops li.done .addr { text-decoration: line-through; }
       li.textContent = "Todavía no hay paradas. Escanea una etiqueta y la primera quedará como Nº 0001.";
       ol.append(li);
     }
+    // fila minimalista: parada+letra, dirección y tilde de entregada; al tocarla se abren las demás acciones
+    const IC = {
+      nav: '<path d="M3 11l18-8-8 18-2-8z"/>',
+      map: '<path d="M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12z"/><circle cx="12" cy="9" r="2.5"/>',
+      edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/>',
+      del: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+      ok: '<path d="M5 12.5l4.5 4.5L19 7"/>',
+    };
+    const svg = (k) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${IC[k]}</svg>`;
     list.forEach((it) => {
-      const stop = route ? route.order.indexOf(it.num) + 1 : 0;
-      const li = document.createElement("li"); if (it.done) li.className = "done";
-      const b = document.createElement("span"); b.className = "badge" + (stop ? "" : " none"); b.textContent = stop || "–";
-      b.title = stop ? "Orden en la ruta" : "Sin ordenar";
-      const ord = document.createElement("div"); ord.className = "ord"; ord.append(b);
-      if (lt.get(it.num)) { const l = document.createElement("span"); l.className = "letter"; l.title = "Código de verificación"; l.textContent = lt.get(it.num); ord.append(l); }
+      const stop = route ? route.order.indexOf(it.num) + 1 : 0, l = lt.get(it.num) || "";
+      const li = document.createElement("li"); li.className = (it.done ? "done" : "") + (openRow === it.num ? " open" : "");
+      const b = document.createElement("span"); b.className = "sbadge" + (stop ? "" : " none"); b.textContent = stop ? stop + l : "–";
+      b.title = stop ? "Parada " + stop + (l ? ", letra " + l : "") : "Sin ordenar";
       const a = document.createElement("div"); a.className = "addr";
-      const small = document.createElement("small"); small.textContent = "Nº " + pad(it.num) + (typeof it.lat === "number" ? "" : " · sin ubicar");
-      a.append(small, document.createTextNode(it.address));
-      if (it.ref) { const r = document.createElement("small"); r.className = "ref"; r.textContent = it.ref; a.append(r); }
-      a.style.cursor = "pointer";
-      a.addEventListener("click", () => { if (typeof it.lat === "number") { map.setView([it.lat, it.lng], 16); closeSheets(); } });
-      const acts = document.createElement("div"); acts.className = "acts";
-      const nav = document.createElement("a"); nav.className = "mini"; nav.textContent = "Ir"; nav.href = gmaps(it); nav.target = "_blank"; nav.rel = "noopener";
-      const done = document.createElement("button"); done.className = "mini"; done.type = "button"; done.textContent = it.done ? "Deshacer" : "Entregada";
-      done.addEventListener("click", () => { it.done = !it.done; save(); refresh(false); });
-      const del = document.createElement("button"); del.type = "button"; del.className = "mini" + (pendingDelete === it.num ? " confirm" : "");
-      del.textContent = pendingDelete === it.num ? "¿Borrar?" : "Borrar";
-      del.addEventListener("click", () => {
-        if (pendingDelete !== it.num) { pendingDelete = it.num; render(); return; }
-        pendingDelete = null; removeItem(it);
-      });
-      const ed = document.createElement("button"); ed.type = "button"; ed.className = "mini"; ed.textContent = "Editar";
-      ed.addEventListener("click", async () => {
-        const v = prompt("Dirección del Nº " + pad(it.num), it.address); if (v == null) return;
-        const nv = v.replace(/\s+/g, " ").trim(); if (!nv || nv === it.address) return;
-        it.address = nv; delete it.lat; delete it.lng; save(); refresh(false);
-        try { const g = await geocode(nv, $("keyInput").value.trim()); if (g) { it.lat = g.lat; it.lng = g.lng; save(); refresh(true); } } catch {}
-      });
-      acts.append(nav, ed, done, del);
-      li.append(ord, a, acts); ol.append(li);
+      const t = document.createElement("b"); t.textContent = it.address;
+      const meta = document.createElement("small");
+      meta.textContent = "Nº " + pad(it.num) + (typeof it.lat === "number" ? "" : " · sin ubicar") + (it.ref ? " · " + it.ref : "");
+      a.append(t, meta);
+      const chk = document.createElement("button"); chk.type = "button"; chk.className = "dchk";
+      chk.setAttribute("aria-label", it.done ? "Marcar como no entregada" : "Marcar como entregada"); chk.innerHTML = svg("ok");
+      chk.addEventListener("click", (e) => { e.stopPropagation(); it.done = !it.done; save(); refresh(false); });
+      li.addEventListener("click", () => { openRow = openRow === it.num ? null : it.num; pendingDelete = null; render(); });
+      li.append(b, a, chk);
+      if (openRow === it.num) {
+        const acts = document.createElement("div"); acts.className = "racts";
+        acts.addEventListener("click", (e) => e.stopPropagation());
+        const nav = document.createElement("a"); nav.href = gmaps(it); nav.target = "_blank"; nav.rel = "noopener"; nav.innerHTML = svg("nav") + "<span>Ir</span>";
+        const see = document.createElement("button"); see.type = "button"; see.innerHTML = svg("map") + "<span>Mapa</span>";
+        see.disabled = typeof it.lat !== "number";
+        see.addEventListener("click", () => { map.setView([it.lat, it.lng], 16); closeSheets(); });
+        const ed = document.createElement("button"); ed.type = "button"; ed.innerHTML = svg("edit") + "<span>Editar</span>";
+        ed.addEventListener("click", async () => {
+          const v = prompt("Dirección del Nº " + pad(it.num), it.address); if (v == null) return;
+          const nv = v.replace(/\s+/g, " ").trim(); if (!nv || nv === it.address) return;
+          it.address = nv; delete it.lat; delete it.lng; save(); refresh(false);
+          try { const g = await geocode(nv, $("keyInput").value.trim()); if (g) { it.lat = g.lat; it.lng = g.lng; save(); refresh(true); } } catch {}
+        });
+        const del = document.createElement("button"); del.type = "button"; del.className = "rdel" + (pendingDelete === it.num ? " confirm" : "");
+        del.innerHTML = svg("del") + "<span>" + (pendingDelete === it.num ? "¿Seguro?" : "Borrar") + "</span>";
+        del.addEventListener("click", () => {
+          if (pendingDelete !== it.num) { pendingDelete = it.num; render(); return; }
+          pendingDelete = null; openRow = null; removeItem(it);
+        });
+        acts.append(nav, see, ed, del); li.append(acts);
+      }
+      ol.append(li);
     });
     if (route && route.summary) { $("summary").textContent = route.summary; $("summary").hidden = false; } else $("summary").hidden = true;
     const left = list.filter(it => !it.done).length;
