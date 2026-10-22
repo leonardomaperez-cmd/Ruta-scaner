@@ -278,10 +278,26 @@ ol.stops li.done .addr { text-decoration: line-through; }
       <span class="note">El aviso funciona con la app abierta y la pantalla encendida, y con el punto azul de tu ubicación activo (botón ◎).</span>
       <label class="label" for="mapStyle">Estilo del mapa</label>
       <select id="mapStyle">
+        <option value="auto">Automático (día y noche)</option>
         <option value="fiord">Fiord (azul oscuro)</option>
         <option value="moderno">Moderno</option>
         <option value="satelite">Satélite</option>
       </select>
+      <div id="autoBox">
+        <label class="label" for="dayStyle">De día</label>
+        <select id="dayStyle">
+        <option value="fiord">Fiord (azul oscuro)</option>
+        <option value="moderno">Moderno</option>
+        <option value="satelite">Satélite</option>
+        </select>
+        <label class="label" for="nightStyle">De noche</label>
+        <select id="nightStyle">
+        <option value="fiord">Fiord (azul oscuro)</option>
+        <option value="moderno">Moderno</option>
+        <option value="satelite">Satélite</option>
+        </select>
+        <span class="note" id="sunNote">Cambia solo con la salida y la puesta del sol donde estás.</span>
+      </div>
       <label class="label" for="countryInput">País (código de 2 letras, opcional)</label>
       <input id="countryInput" type="text" maxlength="2" placeholder="Ej.: AR, MX, CL, ES">
       <span class="note">El país ayuda a que TomTom no confunda calles con el mismo nombre en otros países.</span>
@@ -355,15 +371,52 @@ ol.stops li.done .addr { text-decoration: line-through; }
     if (base) map.removeLayer(base);
     base = L.tileLayer(b[0], { maxZoom: b[2], maxNativeZoom: b[3] || b[2], attribution: b[1] }).addTo(map);
   }
-  const savedStyle = ["fiord", "moderno", "satelite"].includes(store.get("mapStyleBeta2", "fiord")) ? store.get("mapStyleBeta2", "fiord") : "fiord";
-  setBasemap(savedStyle); $("mapStyle").value = savedStyle;
-  $("mapStyle").addEventListener("change", () => { store.set("mapStyleBeta2", $("mapStyle").value); setBasemap($("mapStyle").value); });
+  // Modo automático: un estilo de día y otro de noche, según la salida y la puesta del sol en tu ubicación.
+  function sunTimes(date, lat, lng) {
+    const r = Math.PI / 180, J = date.getTime() / 86400000 + 2440587.5;
+    const n = Math.round(J - 2451545.0009 + lng / 360), Js = 0.0009 - lng / 360 + n;
+    const M = (357.5291 + 0.98560028 * Js) % 360;
+    const C = 1.9148 * Math.sin(M * r) + 0.02 * Math.sin(2 * M * r) + 0.0003 * Math.sin(3 * M * r);
+    const lam = (M + C + 180 + 102.9372) % 360;
+    const Jt = 2451545 + Js + 0.0053 * Math.sin(M * r) - 0.0069 * Math.sin(2 * lam * r);
+    const sd = Math.sin(lam * r) * Math.sin(23.4397 * r), cd = Math.cos(Math.asin(sd));
+    const cw = (Math.sin(-0.833 * r) - Math.sin(lat * r) * sd) / (Math.cos(lat * r) * cd);
+    if (cw > 1) return { night: true }; if (cw < -1) return { day: true };
+    const w = Math.acos(cw) / r / 360, ms = (j) => (j - 2440587.5) * 86400000;
+    return { rise: ms(Jt - w), set: ms(Jt + w) };
+  }
+  let sunPos = store.get("sunPos", null);
+  function isNight() {
+    const c = sunPos || [map.getCenter().lat, map.getCenter().lng], now = new Date(), t = sunTimes(now, c[0], c[1]);
+    if (t.night) return true; if (t.day) return false;
+    return now.getTime() < t.rise || now.getTime() > t.set;
+  }
+  const STYLES = ["fiord", "moderno", "satelite"], okStyle = (v, d) => STYLES.includes(v) ? v : d;
+  let curStyle = null;
+  function applyStyle() {
+    const mode = $("mapStyle").value;
+    $("autoBox").hidden = mode !== "auto";
+    const want = mode === "auto" ? (isNight() ? $("nightStyle").value : $("dayStyle").value) : mode;
+    if (mode === "auto") $("sunNote").textContent = "Ahora: " + (isNight() ? "de noche" : "de día") + ". Cambia solo con la salida y la puesta del sol donde estás.";
+    if (want !== curStyle) { curStyle = want; setBasemap(want); }
+  }
+  const m0 = store.get("mapStyleBeta3", "auto");
+  $("mapStyle").value = m0 === "auto" ? "auto" : okStyle(m0, "auto");
+  $("dayStyle").value = okStyle(store.get("dayStyle", "moderno"), "moderno");
+  $("nightStyle").value = okStyle(store.get("nightStyle", "fiord"), "fiord");
+  applyStyle();
+  $("mapStyle").addEventListener("change", () => { store.set("mapStyleBeta3", $("mapStyle").value); applyStyle(); });
+  $("dayStyle").addEventListener("change", () => { store.set("dayStyle", $("dayStyle").value); applyStyle(); });
+  $("nightStyle").addEventListener("change", () => { store.set("nightStyle", $("nightStyle").value); applyStyle(); });
+  setInterval(applyStyle, 60000);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") applyStyle(); });
 
   // ---------- mi ubicación: punto azul con el radio de precisión ----------
   let meMarker = null, meCircle = null, meWatch = null, meFollow = false, meLast = null;
   const meIcon = L.divIcon({ className: "", html: '<div class="me-dot"></div>', iconSize: [22, 22], iconAnchor: [11, 11] });
   function onMe(pos) {
     const ll = [pos.coords.latitude, pos.coords.longitude]; meLast = ll;
+    if (!sunPos || Math.abs(sunPos[0] - ll[0]) + Math.abs(sunPos[1] - ll[1]) > 0.5) { sunPos = [+ll[0].toFixed(2), +ll[1].toFixed(2)]; store.set("sunPos", sunPos); applyStyle(); }
     if (!meMarker) {
       meCircle = L.circle(ll, { radius: pos.coords.accuracy, color: "#1a73e8", weight: 1, fillOpacity: .12, interactive: false }).addTo(map);
       meMarker = L.marker(ll, { icon: meIcon, zIndexOffset: 1000, keyboard: false }).bindPopup("Estás acá").addTo(map);
