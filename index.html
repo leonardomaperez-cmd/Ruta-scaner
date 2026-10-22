@@ -15,6 +15,7 @@
 /* Layout: mapa arriba (como Zeo/Circuit), panel con pestañas abajo: Escanear · Paradas · Ajustes */
 :root {
   --bg: #eef1f4; --surface: #ffffff; --ink: #16202b; --muted: #5b6774; --line: #d3d9e0;
+  --top: env(safe-area-inset-top, 0px);
   --accent: #f2b705; --accent-ink: #1b1600; --ok: #1f7a4d; --bad: #b3261e;
   --display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
   --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -38,7 +39,7 @@ body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--body); ov
 .fab .cnt { position: absolute; top: -4px; right: -4px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; background: var(--ink); color: var(--bg); font: 700 12px/22px var(--mono); }
 .fab .cnt:empty { display: none; }
 .fab-label { position: absolute; top: calc(100% + 4px); left: 50%; transform: translateX(-50%); font: 700 .7rem var(--display); letter-spacing: .06em; text-transform: uppercase; color: #fff; text-shadow: 0 1px 3px #000; white-space: nowrap; }
-.chip { position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: 64px; right: 12px; z-index: 500; display: flex; justify-content: flex-end; pointer-events: none; }
+.chip { position: fixed; top: calc(10px + var(--top)); left: 12px; right: 12px; z-index: 500; display: flex; justify-content: center; pointer-events: none; }
 .chip span { pointer-events: auto; background: var(--surface); color: var(--ink); font: 600 .9rem var(--mono); padding: 6px 12px; border-radius: 18px; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
 .chip span:empty { display: none; }
 /* paneles que suben desde abajo */
@@ -58,7 +59,7 @@ body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--body); ov
 .frame .tr { top: -3px; right: -3px; border-left: 0; border-bottom: 0; border-radius: 0 14px 0 0; }
 .frame .bl { bottom: -3px; left: -3px; border-right: 0; border-top: 0; border-radius: 0 0 0 14px; }
 .frame .br { bottom: -3px; right: -3px; border-left: 0; border-top: 0; border-radius: 0 0 14px 0; }
-.scan-top { position: absolute; top: calc(14px + env(safe-area-inset-top, 0px)); left: 16px; right: 16px; display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; }
+.scan-top { position: absolute; top: calc(14px + var(--top)); left: 16px; right: 16px; display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; }
 .scan-top p { margin: 0; font: 600 1rem var(--body); text-shadow: 0 1px 4px #000; }
 .scan-top .x { background: rgba(0,0,0,.5); color: #fff; border-color: rgba(255,255,255,.4); flex: none; }
 .scan-bottom { position: absolute; left: 0; right: 0; bottom: calc(28px + env(safe-area-inset-bottom, 0px)); display: flex; justify-content: center; align-items: center; gap: 34px; }
@@ -83,9 +84,15 @@ body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--body); ov
 .pacts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
 #mapToast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(130px + env(safe-area-inset-bottom, 0px)); z-index: 960; background: rgba(22,32,43,.92); color: #fff; padding: 8px 14px; border-radius: 999px; font: 600 .9rem var(--body); max-width: calc(100% - 32px); text-align: center; }
 .me-dot { width: 16px; height: 16px; border-radius: 50%; background: #1a73e8; border: 3px solid #fff; box-shadow: 0 0 0 2px rgba(26,115,232,.35), 0 1px 4px rgba(0,0,0,.4); }
-.locate-btn { width: 34px; height: 34px; display: grid; place-items: center; background: #fff; border: 0; cursor: pointer; font-size: 18px; color: #16202b; }
-.locate-btn.on { color: #1a73e8; }
-#arrive { position: fixed; left: 12px; right: 12px; top: calc(56px + env(safe-area-inset-top, 0px)); z-index: 970; background: #16202b; color: #fff; border-radius: 16px; padding: 14px; box-shadow: 0 8px 24px rgba(0,0,0,.4); display: grid; gap: 8px; max-width: 520px; margin: 0 auto; }
+/* botones del mapa: a la derecha, a media altura, redondos como los de abajo */
+.map-ctl { position: fixed; right: 12px; top: 50%; transform: translateY(-50%); z-index: 500; display: grid; gap: 12px; }
+.map-ctl .zoom { display: grid; border-radius: 24px; overflow: hidden; background: var(--surface); box-shadow: 0 4px 14px rgba(0,0,0,.35); }
+.map-ctl .zoom button + button { border-top: 1px solid var(--line); }
+.map-ctl button { width: 48px; height: 48px; display: grid; place-items: center; border: 0; background: var(--surface); color: var(--ink); cursor: pointer; padding: 0; }
+.map-ctl button svg { width: 22px; height: 22px; }
+.map-ctl .locate-btn { border-radius: 50%; box-shadow: 0 4px 14px rgba(0,0,0,.35); }
+.map-ctl .locate-btn.on { color: #1a73e8; }
+#arrive { position: fixed; left: 12px; right: 12px; top: calc(56px + var(--top)); z-index: 970; background: #16202b; color: #fff; border-radius: 16px; padding: 14px; box-shadow: 0 8px 24px rgba(0,0,0,.4); display: grid; gap: 8px; max-width: 520px; margin: 0 auto; }
 #arrive .big { font: 700 1.6rem/1.1 var(--display); letter-spacing: .02em; color: #f5c32c; }
 #arrive .ref { font-style: italic; }
 #arrive .row { display: flex; gap: 8px; }
@@ -324,6 +331,8 @@ ol.stops li.done .addr { text-decoration: line-through; }
   const KEY = "ruta-escaner-v1";
   // App de Android (Capacitor): GPS y voz del teléfono siguen andando con la pantalla apagada o en otra app.
   const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  // en la app de Android la página va debajo de la barra del teléfono (hora, batería): se deja ese lugar libre
+  if (NATIVE) document.documentElement.style.setProperty("--top", "max(env(safe-area-inset-top, 0px), 30px)");
   const plug = (n) => NATIVE ? (window.CapPlugins && window.CapPlugins[n]) || (window.Capacitor.Plugins && window.Capacitor.Plugins[n]) || null : null;
   const pad = (n) => String(n).padStart(4, "0");
   const store = {
@@ -350,7 +359,7 @@ ol.stops li.done .addr { text-decoration: line-through; }
   $("backdrop").addEventListener("click", closeSheets);
 
   // ---------- mapa ----------
-  const map = L.map("map", { zoomControl: true }).setView([-34.6037, -58.3816], 11);
+  const map = L.map("map", { zoomControl: false }).setView([-34.6037, -58.3816], 11);
   // Fondos de mapa gratuitos y sin clave: Fiord y Moderno (OpenFreeMap) y Satélite (Esri). OSM queda de respaldo.
   const OSM = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
   const BASEMAPS = {
@@ -463,14 +472,16 @@ ol.stops li.done .addr { text-decoration: line-through; }
     try { wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release", () => { wakeLock = null; }); } catch {}
   }
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && meWatch != null) keepAwake(); });
-  const LocateCtl = L.Control.extend({ options: { position: "topleft" }, onAdd() {
-    const wrap = L.DomUtil.create("div", "leaflet-bar");
-    const b = L.DomUtil.create("button", "locate-btn", wrap); b.type = "button"; b.title = "Mi ubicación"; b.setAttribute("aria-label", "Mi ubicación"); b.textContent = "◎";
-    L.DomEvent.disableClickPropagation(wrap); L.DomEvent.on(b, "click", () => startMe(true));
-    return wrap;
-  } });
-  new LocateCtl().addTo(map);
-  const locBtn = document.querySelector(".locate-btn");
+  // + / − y centrar en mi ubicación
+  const ctl = document.createElement("div"); ctl.className = "map-ctl";
+  const ico = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+  ctl.innerHTML = '<div class="zoom"><button type="button" class="zin" aria-label="Acercar">' + ico('<path d="M12 5v14M5 12h14"/>') + '</button><button type="button" class="zout" aria-label="Alejar">' + ico('<path d="M5 12h14"/>') + '</button></div>'
+    + '<button type="button" class="locate-btn" aria-label="Mi ubicación" title="Mi ubicación">' + ico('<circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8" stroke-width="1.6"/>') + '</button>';
+  document.body.append(ctl);
+  ctl.querySelector(".zin").addEventListener("click", () => map.zoomIn());
+  ctl.querySelector(".zout").addEventListener("click", () => map.zoomOut());
+  const locBtn = ctl.querySelector(".locate-btn");
+  locBtn.addEventListener("click", () => startMe(true));
   // si ya diste permiso antes, el punto aparece solo al abrir la app
   if (NATIVE && store.get("permsDone", false)) startMe(false); // en la app de Android se sigue la ubicación desde que se abre (la primera vez, después de pedir los permisos)
   else try { navigator.permissions && navigator.permissions.query({ name: "geolocation" }).then(st => { if (st.state === "granted") startMe(false); }).catch(() => {}); } catch {}
