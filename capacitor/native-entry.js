@@ -6,4 +6,5 @@ import { LocalNotifications } from "@capacitor/local-notifications";
 
 const BackgroundGeolocation = registerPlugin("BackgroundGeolocation");
 const Permisos = registerPlugin("Permisos");
-window.CapPlugins = { Camera, TextToSpeech, LocalNotifications, BackgroundGeolocation, Permisos };
+const LectorTexto = registerPlugin("LectorTexto");
+window.CapPlugins = { Camera, TextToSpeech, LocalNotifications, BackgroundGeolocation, Permisos, LectorTexto };

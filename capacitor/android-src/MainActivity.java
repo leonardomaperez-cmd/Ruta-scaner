@@ -7,6 +7,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(PermisosPlugin.class);
+        registerPlugin(LectorTextoPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

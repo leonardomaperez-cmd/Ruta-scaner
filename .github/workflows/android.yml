@@ -82,6 +82,11 @@ jobs:
                   }
               }
           }
+
+          // ML Kit: lee el texto de la etiqueta en el teléfono, sin internet
+          dependencies {
+              implementation 'com.google.mlkit:text-recognition:16.0.1'
+          }
           GRADLE
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon

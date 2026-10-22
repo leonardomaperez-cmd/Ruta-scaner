@@ -309,6 +309,7 @@ ol.stops li.done .dchk { background: var(--accent); border-color: transparent; c
       <label class="label" for="startInput">Punto de partida</label>
       <input id="startInput" type="text" placeholder="Ej.: Depósito, Av. Rivadavia 5000, CABA">
       <label class="check"><input id="returnChk" type="checkbox"> Volver al punto de partida al final</label>
+      <label class="check" id="geminiAlwaysBox" hidden><input id="geminiAlwaysChk" type="checkbox"> Leer siempre con Gemini (si no, lee primero ML Kit en el teléfono y Gemini solo cuando no cierra)</label>
       <label class="check"><input id="zaChk" type="checkbox"> Letras de la Z a la A (la primera parada lleva la última letra)</label>
       <label class="check"><input id="arriveChk" type="checkbox"> Avisarme con voz al llegar a la próxima parada</label>
       <label class="label" for="arriveDist">Distancia del aviso (metros)</label>
@@ -743,11 +744,26 @@ ol.stops li.done .dchk { background: var(--accent); border-color: transparent; c
     } catch { return file; }
   }
   let ocr = null;
+  const tidyLines = (arr) => arr.map(l => String(l).replace(/[|_~«»]+/g, " ").replace(/\s+/g, " ").trim()).filter(l => l.length > 2);
+  const toDataURL = (b) => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = no; r.readAsDataURL(b); });
+  // En la app de Android lee ML Kit de Google (rápido, sin internet); en el navegador, Tesseract.
   async function readText(img, onP) {
+    const ML = plug("LectorTexto");
+    if (ML) {
+      try { const r = await ML.leer({ image: await toDataURL(img) }); return tidyLines(r && r.lines || []); }
+      catch (e) { console.warn("ML Kit", e); }
+    }
     if (!window.Tesseract) throw new Error("no se pudo cargar el lector");
     if (!ocr) ocr = await Tesseract.createWorker("spa", 1, { logger: m => { if (typeof m.progress === "number") onP(m.progress); } });
     const { data } = await ocr.recognize(img);
-    return String(data.text || "").split("\n").map(l => l.replace(/[|_~«»]+/g, " ").replace(/\s+/g, " ").trim()).filter(l => l.length > 2);
+    return tidyLines(String(data.text || "").split("\n"));
+  }
+  // ¿La lectura del teléfono alcanza sola? Encontró «Direccion:» de una etiqueta Flex y la calle tiene altura.
+  function solidRead(lines) {
+    const fp = lines && lines.length ? flexPick(lines) : null;
+    if (!fp || ![...fp.rank.values()].includes(0)) return "";
+    const o = ocrAddress(lines), street = o.split(",")[0];
+    return /[a-záéíóúñ]{3}/i.test(street) && /\b\d{1,5}\b/.test(street) ? o : "";
   }
   // Marca de entrada las líneas que parecen dirección: tienen número y palabras de calle o código postal.
   const looksAddress = (l) => /\d/.test(l) && (/\b(av|avda|avenida|calle|c\/|pje|pasaje|ruta|km|blvd|bv|boulevard|diag|piso|dpto|depto|cp|col|colonia|barrio|n[º°o]\.?)\b/i.test(l) || /\b[A-Z]?\d{4,5}[A-Z]{0,3}\b/.test(l) || /^[A-ZÁÉÍÓÚÑa-záéíóúñ.' ]+ \d{1,5}\b/.test(l));
@@ -962,14 +978,28 @@ ol.stops li.done .dchk { background: var(--accent); border-color: transparent; c
     let why = gkey ? "" : "Sin clave de Gemini: leída en el teléfono. ";
     const token = ++readToken;
     // Doble lectura: el lector del teléfono lee al mismo tiempo que Gemini y después se comparan.
-    const ocrP = shrink(file).then(img => readText(img, () => {})).catch(() => null);
+    // en la app de Android, ML Kit lee primero y Gemini queda solo para cuando la lectura no cierra
+    const ML = plug("LectorTexto") && !$("geminiAlwaysChk").checked;
+    const ocrP = (ML ? shrink(file, 2000, false) : shrink(file)).then(img => readText(img, () => {})).catch(() => null);
+    if (ML) {
+      say("Leyendo la etiqueta en el teléfono…");
+      const lines = await ocrP;
+      if (token !== readToken) return;
+      if (solidRead(lines)) {
+        setLines(lines); lastRead = $("addrInput").value.trim(); $("saveBtn").disabled = false;
+        say("✓ Leída en el teléfono (ML Kit). Revisala y guardala.", "ok");
+        return;
+      }
+      if (gkey) why = "";
+    }
     if (gkey) {
       try {
-        say("Gemini y el lector del teléfono están leyendo la dirección…");
+        say(ML ? "La lectura del teléfono no cerró: ahora lee Gemini…" : "Gemini y el lector del teléfono están leyendo la dirección…");
         const got = await readWithGemini(await shrink(file, 1600, false), ownKey);
         $("saveBtn").disabled = false;
         if (got) {
           $("addrInput").value = lastRead = got.address; $("refInput").value = got.ref; schedulePreview();
+          if (ML) { say("Leída por Gemini (el teléfono no la leyó completa). Revisala y guardala.", "ok"); return; }
           say("Leída por Gemini. Comparando con el lector del teléfono…", "ok");
           crossCheck(token, got.address, ocrP, say);
           return;
@@ -1378,6 +1408,9 @@ ol.stops li.done .dchk { background: var(--accent); border-color: transparent; c
   if (store.get("country", null) === null) { $("countryInput").value = "AR"; store.set("country", "AR"); }
   $("returnChk").checked = store.get("back", false);
   $("returnChk").addEventListener("change", () => store.set("back", $("returnChk").checked));
+  $("geminiAlwaysChk").checked = store.get("geminiAlways", false);
+  $("geminiAlwaysChk").addEventListener("change", () => store.set("geminiAlways", $("geminiAlwaysChk").checked));
+  $("geminiAlwaysBox").hidden = !plug("LectorTexto");
   $("zaChk").checked = store.get("za", true);
   $("zaChk").addEventListener("change", () => { store.set("za", $("zaChk").checked); refresh(false); });
   // ---------- app de Android: pide todos los permisos juntos la primera vez ----------
@@ -1434,7 +1467,7 @@ ol.stops li.done .dchk { background: var(--accent); border-color: transparent; c
   }
   if (NATIVE && !store.get("permsDone", false)) permsScreen();
   if (NATIVE) { $("permsBtn").hidden = false; $("permsBtn").addEventListener("click", permsScreen); }
-  if (NATIVE) { $("nativeInfo").hidden = false; $("nativeInfo").textContent = "App de Android · " + ["Camera", "BackgroundGeolocation", "TextToSpeech", "LocalNotifications", "Permisos"].map(n => n + (plug(n) ? " ✓" : " ✗")).join(" · "); }
+  if (NATIVE) { $("nativeInfo").hidden = false; $("nativeInfo").textContent = "App de Android · " + ["Camera", "BackgroundGeolocation", "TextToSpeech", "LocalNotifications", "Permisos", "LectorTexto"].map(n => n + (plug(n) ? " ✓" : " ✗")).join(" · "); }
   $("arriveChk").checked = store.get("arrive", true);
   $("arriveChk").addEventListener("change", () => store.set("arrive", $("arriveChk").checked));
   $("arriveDist").value = store.get("arriveDist", "150");
