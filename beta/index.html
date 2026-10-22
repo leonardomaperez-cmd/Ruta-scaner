@@ -1404,8 +1404,8 @@ ol.stops li.done .addr { text-decoration: line-through; }
 // Mientras supabaseUrl esté vacío, la app funciona como siempre, sin pedir cuenta.
 // Las cuentas se activan a mano en Supabase (tabla «perfiles», columna «activo») cuando se acredita el pago.
 const CUENTA = {
-  supabaseUrl: "https://iinrakaxkbuqgdghpina.supabase.co",      // ej.: https://xxxx.supabase.co
-  supabaseAnonKey: "sb_publishable_awBVwLiczqU3l7MG5kq1FA_o_kwVRYS",  // clave pública «anon»/«publishable» del proyecto (se puede publicar; la seguridad la dan las reglas RLS)
+  supabaseUrl: "",      // ej.: https://xxxx.supabase.co
+  supabaseAnonKey: "",  // clave pública «anon» del proyecto (se puede publicar; la seguridad la dan las reglas RLS)
   payUrl: "",           // link de pago de Mercado Pago
 };
 (() => {
