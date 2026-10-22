@@ -181,6 +181,7 @@ ol.stops li.done .dchk { background: var(--accent); border-color: transparent; c
 .empty { padding: 20px 14px; text-align: center; color: var(--muted); display: block !important; }
 .note { color: var(--muted); font-size: .82rem; }
 .check { display: flex; gap: 8px; align-items: center; }
+input:disabled { opacity: .45; }
 [hidden] { display: none !important; }
 /* marcadores numerados */
 .pin { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: linear-gradient(135deg, #00855d, #006948); border: 2.5px solid #fff; box-shadow: 0 3px 8px rgba(15,23,42,.45); }
@@ -308,6 +309,7 @@ ol.stops li.done .dchk { background: var(--accent); border-color: transparent; c
       <span class="note">Opcional y gratis en aistudio.google.com. Con ella, la foto la lee Gemini y saca solo la dirección del destinatario. Sin ella, se lee en el teléfono. En el plan gratuito Google puede usar las fotos para mejorar sus productos.</span>
       <label class="label" for="startInput">Punto de partida</label>
       <input id="startInput" type="text" placeholder="Ej.: Depósito, Av. Rivadavia 5000, CABA">
+      <label class="check"><input id="hereChk" type="checkbox"> Salir desde mi ubicación actual</label>
       <label class="check"><input id="returnChk" type="checkbox"> Volver al punto de partida al final</label>
       <label class="check" id="geminiAlwaysBox" hidden><input id="geminiAlwaysChk" type="checkbox"> Leer siempre con Gemini (si no, lee primero ML Kit en el teléfono y Gemini solo cuando no cierra)</label>
       <label class="check"><input id="zaChk" type="checkbox"> Letras de la Z a la A (la primera parada lleva la última letra)</label>
@@ -453,10 +455,10 @@ ol.stops li.done .dchk { background: var(--accent); border-color: transparent; c
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") applyStyle(); });
 
   // ---------- mi ubicación: punto azul con el radio de precisión ----------
-  let meMarker = null, meCircle = null, meWatch = null, meFollow = false, meLast = null;
+  let meMarker = null, meCircle = null, meWatch = null, meFollow = false, meLast = null, meAt = 0;
   const meIcon = L.divIcon({ className: "", html: '<div class="me-dot"></div>', iconSize: [22, 22], iconAnchor: [11, 11] });
   function onMe(pos) {
-    const ll = [pos.coords.latitude, pos.coords.longitude]; meLast = ll;
+    const ll = [pos.coords.latitude, pos.coords.longitude]; meLast = ll; meAt = Date.now();
     if (!sunPos || Math.abs(sunPos[0] - ll[0]) + Math.abs(sunPos[1] - ll[1]) > 0.5) { sunPos = [+ll[0].toFixed(2), +ll[1].toFixed(2)]; store.set("sunPos", sunPos); applyStyle(); }
     if (!meMarker) {
       meCircle = L.circle(ll, { radius: pos.coords.accuracy, color: "#1a73e8", weight: 1, fillOpacity: .12, interactive: false }).addTo(map);
@@ -1222,12 +1224,18 @@ ol.stops li.done .dchk { background: var(--accent); border-color: transparent; c
     $("retakeBtn").addEventListener("click", stopMic);
   }
 
+  // Ubicación actual para salir desde ahí: la del punto azul si es reciente, si no se pide una vez.
+  function whereAmI() {
+    if (meLast && Date.now() - meAt < 120000) return Promise.resolve({ lat: meLast[0], lng: meLast[1] });
+    if (!navigator.geolocation) return Promise.resolve(null);
+    return new Promise(r => navigator.geolocation.getCurrentPosition(p => r({ lat: p.coords.latitude, lng: p.coords.longitude }), () => r(null), { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 }));
+  }
   async function optimize() {
     const st = $("optStatus"); const say = (m, c) => { st.className = "status" + (c ? " " + c : ""); st.textContent = m; };
     const key = $("keyInput").value.trim();
     const todo = items.filter(it => !it.done);
     if (!todo.length) { say("No hay paradas pendientes.", "err"); return; }
-    const startText = $("startInput").value.trim();
+    const here = $("hereChk").checked, startText = here ? "" : $("startInput").value.trim();
     $("optBtn").disabled = true;
     try {
       for (let i = 0; i < todo.length; i++) {
@@ -1251,7 +1259,11 @@ ol.stops li.done .dchk { background: var(--accent); border-color: transparent; c
       const missing = todo.length - located.length;
       if (!located.length) { say("No se encontró ninguna dirección. Revisa que tengan calle, número y ciudad.", "err"); return; }
       let start;
-      if (startText) { say("Ubicando el punto de partida…"); start = await geocode(startText, key); if (!start) { say("No encontré el punto de partida. Escríbelo con calle, número y ciudad.", "err"); return; } }
+      if (here) {
+        say("Buscando tu ubicación actual…");
+        start = await whereAmI();
+        if (!start) { say("No pude obtener tu ubicación. Activá la ubicación del teléfono o escribí el punto de partida.", "err"); return; }
+      } else if (startText) { say("Ubicando el punto de partida…"); start = await geocode(startText, key); if (!start) { say("No encontré el punto de partida. Escríbelo con calle, número y ciudad.", "err"); return; } }
       else start = { lat: located[0].lat, lng: located[0].lng };
       const back = $("returnChk").checked;
       if (!key) {
@@ -1272,7 +1284,7 @@ ol.stops li.done .dchk { background: var(--accent); border-color: transparent; c
           } catch {}
         }
         const min = Math.round(res.s / 60);
-        route = { order: res.order, line: res.line, start: startText ? start : null,
+        route = { order: res.order, line: res.line, start: startText || here ? start : null,
           summary: (res.m / 1000).toFixed(1) + " km · " + (min >= 60 ? Math.floor(min / 60) + " h " + (min % 60) + " min" : min + " min") + (back ? " ida y vuelta" : "") };
         save(); refresh(true);
         const warn = far.length ? "Nº " + far.map(pad).join(", ") + " quedó lejos del resto y no se incluyó; revisa la dirección (agrega ciudad) o pon el país en Ajustes. "
@@ -1301,7 +1313,7 @@ ol.stops li.done .dchk { background: var(--accent); border-color: transparent; c
       useLegs.forEach(l => { m += l.summary.lengthInMeters; s += l.summary.travelTimeInSeconds; (l.points || []).forEach(p => line.push([p.latitude, p.longitude])); });
       const min = Math.round(s / 60);
       route = {
-        order, line, start: startText ? start : null,
+        order, line, start: startText || here ? start : null,
         summary: (m / 1000).toFixed(1) + " km · " + (min >= 60 ? Math.floor(min / 60) + " h " + (min % 60) + " min" : min + " min") + (back ? " ida y vuelta" : ""),
       };
       save(); refresh(true);
@@ -1406,6 +1418,9 @@ ol.stops li.done .dchk { background: var(--accent); border-color: transparent; c
     $(id).addEventListener("change", () => store.set(k, $(id).value.trim()));
   });
   if (store.get("country", null) === null) { $("countryInput").value = "AR"; store.set("country", "AR"); }
+  const hereSync = () => { $("startInput").disabled = $("hereChk").checked; };
+  $("hereChk").checked = store.get("startHere", false); hereSync();
+  $("hereChk").addEventListener("change", () => { store.set("startHere", $("hereChk").checked); hereSync(); });
   $("returnChk").checked = store.get("back", false);
   $("returnChk").addEventListener("change", () => store.set("back", $("returnChk").checked));
   $("geminiAlwaysChk").checked = store.get("geminiAlways", false);
