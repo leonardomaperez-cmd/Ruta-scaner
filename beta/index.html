@@ -1473,8 +1473,13 @@ input:disabled { opacity: .45; }
     const j = await r.json();
     return j && j[0] ? { lat: Number(j[0].lat), lng: Number(j[0].lon), label: j[0].display_name || "" } : null;
   }
+  // «Mitre 500 entre Rivadavia y Colón»: las entre calles no sirven para buscar, se sacan (quedan escritas en la dirección)
+  const BETWEEN = /\s*[,(-]?\s*\b(?:entre(?!\s+r[ií]os\b)|e\/|esq\.?|esquina|casi)(?:\s|$)[^,)]*\)?/i;
+  const splitBetween = (t) => { const m = String(t).match(BETWEEN); return m && m.index > 0 ? { addr: (t.slice(0, m.index) + t.slice(m.index + m[0].length)).replace(/\s+/g, " ").replace(/^[\s,]+|[\s,]+$/g, ""), between: m[0].replace(/^[\s,(-]+|[\s)]+$/g, "") } : { addr: t, between: "" }; };
   async function geocode(text, key) {
     const pk = picked.get(text.replace(/\s+/g, " ").trim()); if (pk) return pk;
+    text = splitBetween(text.replace(/\s+/g, " ").trim()).addr;
+    const pk2 = picked.get(text); if (pk2) return pk2;
     if (!key) return geocodeOSM(text);
     const u = new URL("https://api.tomtom.com/search/2/geocode/" + encodeURIComponent(text) + ".json");
     u.searchParams.set("key", key); u.searchParams.set("limit", "1"); u.searchParams.set("language", "es-ES");
@@ -1554,8 +1559,8 @@ input:disabled { opacity: .45; }
     const hide = () => { box.hidden = true; box.textContent = ""; };
     input.addEventListener("input", () => {
       clearTimeout(t);
-      const q = input.value.replace(/\s+/g, " ").trim();
-      if (q.length < 4 || picked.has(q)) { hide(); return; }
+      const full = input.value.replace(/\s+/g, " ").trim(), sb = splitBetween(full), q = sb.addr;
+      if (q.length < 4 || picked.has(full) || picked.has(q)) { hide(); return; }
       t = setTimeout(async () => {
         const my = ++seq;
         try {
@@ -1584,7 +1589,7 @@ input:disabled { opacity: .45; }
             li.addEventListener("pointerdown", (e) => {
               e.preventDefault();
               picked.set(o.text, { lat: o.lat, lng: o.lng, label: o.text });
-              input.value = o.text; hide(); onPick && onPick(o);
+              input.value = o.text + (sb.between ? " " + sb.between : ""); hide(); onPick && onPick(o);
               input.dispatchEvent(new Event("change"));
             });
             box.append(li);
