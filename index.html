@@ -1476,8 +1476,51 @@ input:disabled { opacity: .45; }
   // «Mitre 500 entre Rivadavia y Colón»: las entre calles no sirven para buscar, se sacan (quedan escritas en la dirección)
   const BETWEEN = /\s*[,(-]?\s*\b(?:entre(?!\s+r[ií]os\b)|e\/|esq\.?|esquina|casi)(?:\s|$)[^,)]*\)?/i;
   const splitBetween = (t) => { const m = String(t).match(BETWEEN); return m && m.index > 0 ? { addr: (t.slice(0, m.index) + t.slice(m.index + m[0].length)).replace(/\s+/g, " ").replace(/^[\s,]+|[\s,]+$/g, ""), between: m[0].replace(/^[\s,(-]+|[\s)]+$/g, "") } : { addr: t, between: "" }; };
+  // Esquinas y entre calles con OpenStreetMap (Overpass, gratis): «Pringles y Mendoza» da la esquina;
+  // «Holanda 1200 entre Pringles y Mendoza» da el medio de esa cuadra, que suele ser más certero que la altura.
+  const CORNER = /^(.+?)\s+(?:y|e|esq\.?|esquina)\s+(.+)$/i;
+  function cornerPlan(text) {
+    const sb = splitBetween(text), parts = sb.addr.split(",").map(x => x.trim()).filter(Boolean), place = parts.slice(1).join(", ");
+    if (sb.between) {
+      const base = sb.addr.split(",")[0].replace(/\s+\d+\s*$/, "").replace(/\s+\d+\b.*$/, "").trim();
+      const rest = sb.between.replace(/^(?:entre|e\/|esq\.?|esquina|casi)\s*/i, "");
+      const two = rest.match(/^(.+?)\s+(?:y|e)\s+(.+)$/i);
+      const others = two ? [two[1], two[2]] : [rest];
+      return base && !/\d/.test(base) ? { pairs: others.map(o => [base, o]), place } : null;
+    }
+    if (/\d/.test(parts[0] || "")) return null;
+    const m = (parts[0] || "").match(CORNER);
+    return m ? { pairs: [[m[1], m[2]]], place } : null;
+  }
+  // nombre escrito a mano → expresión que acepta tildes, «Av.», «Calle», etc.
+  const nameRx = (n) => n.replace(/^(?:av(?:enida)?\.?|calle|pje\.?|pasaje|boulevard|bv\.?|diag(?:onal)?\.?)\s+/i, "").trim()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[.*+?^${}()|[\]\\"]/g, "")
+    .replace(/a/gi, "[aá]").replace(/e/gi, "[eé]").replace(/i/gi, "[ií]").replace(/o/gi, "[oó]").replace(/u/gi, "[uúü]").replace(/n/gi, "[nñ]");
+  async function geocodeCorner(text) {
+    const plan = cornerPlan(text); if (!plan) return null;
+    let near = meLast || (map && map.getCenter && [map.getCenter().lat, map.getCenter().lng]), R = 30000;
+    if (plan.place) { try { const g = await geocodeOSM(plan.place); if (g) { near = [g.lat, g.lng]; R = 8000; } } catch {} }
+    if (!near) return null;
+    const around = `(around:${R},${near[0].toFixed(5)},${near[1].toFixed(5)})`;
+    const one = async ([a, b]) => {
+      const q = `[out:json][timeout:20];way[highway][name~"${nameRx(a)}",i]${around}->.a;way[highway][name~"${nameRx(b)}",i]${around}->.b;node(w.a)(w.b);out;`;
+      const r = await fetch("https://overpass-api.de/api/interpreter", { method: "POST", body: "data=" + encodeURIComponent(q), headers: { "Content-Type": "application/x-www-form-urlencoded" } });
+      if (!r.ok) return null;
+      const j = await r.json(), d = (n) => (n.lat - near[0]) ** 2 + (n.lon - near[1]) ** 2;
+      const best = (j.elements || []).filter(n => n.type === "node").sort((x, y) => d(x) - d(y))[0];
+      return best ? { lat: best.lat, lng: best.lon } : null;
+    };
+    try {
+      const pts = (await Promise.all(plan.pairs.map(one))).filter(Boolean);
+      if (!pts.length) return null;
+      // entre dos calles: el medio de la cuadra (si las dos esquinas están cerca una de otra)
+      if (pts.length === 2 && Math.hypot(pts[0].lat - pts[1].lat, pts[0].lng - pts[1].lng) < 0.01) return { lat: (pts[0].lat + pts[1].lat) / 2, lng: (pts[0].lng + pts[1].lng) / 2, label: plan.pairs[0][0] + " entre " + plan.pairs[0][1] + " y " + plan.pairs[1][1] };
+      return { lat: pts[0].lat, lng: pts[0].lng, label: "esquina " + plan.pairs[0].join(" y ") };
+    } catch { return null; }
+  }
   async function geocode(text, key) {
     const pk = picked.get(text.replace(/\s+/g, " ").trim()); if (pk) return pk;
+    const cg = await geocodeCorner(text.replace(/\s+/g, " ").trim()); if (cg) return cg;
     text = splitBetween(text.replace(/\s+/g, " ").trim()).addr;
     const pk2 = picked.get(text); if (pk2) return pk2;
     if (!key) return geocodeOSM(text);
@@ -1560,7 +1603,7 @@ input:disabled { opacity: .45; }
     input.addEventListener("input", () => {
       clearTimeout(t);
       const full = input.value.replace(/\s+/g, " ").trim(), sb = splitBetween(full), q = sb.addr;
-      if (q.length < 4 || picked.has(full) || picked.has(q)) { hide(); return; }
+      if (q.length < 4 || picked.has(full) || picked.has(q) || (cornerPlan(full) && !sb.between)) { hide(); return; }
       t = setTimeout(async () => {
         const my = ++seq;
         try {
