@@ -199,6 +199,29 @@ input:disabled { opacity: .45; }
 .pinw { position: relative; }
 .pinx { position: absolute; top: -8px; right: -10px; min-width: 20px; height: 18px; padding: 0 4px; border-radius: 9px; background: #f59e0b; color: #1f1300; border: 2px solid #fff; font: 800 10px/14px "Space Grotesk", system-ui, sans-serif; text-align: center; font-style: normal; }
 .xtra { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: #f59e0b; color: #1f1300; font: 800 .78rem var(--display); vertical-align: 1px; }
+.revbub { position: fixed; right: 12px; top: calc(50% - 150px); z-index: 520; width: 52px; height: 52px; border-radius: 50%; border: 0; background: var(--surface); color: var(--ink); box-shadow: 0 4px 14px rgba(0,0,0,.35); display: grid; place-items: center; font-size: 22px; touch-action: none; cursor: pointer; }
+.revbub b { position: absolute; top: -4px; right: -4px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; background: #f59e0b; color: #1f1300; font: 800 .8rem/22px var(--display); }
+.revbub b:empty { display: none; }
+.revbub.drag { transform: scale(1.1); cursor: grabbing; }
+.rcard { border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 14px; padding: 12px; margin-bottom: 12px; display: grid; gap: 8px; background: var(--surface); }
+.rcard .rhead { display: flex; align-items: center; gap: 8px; }
+.rcard .rhead b { font: 700 1.3rem var(--display); }
+.rcard .rhead span { color: var(--muted); font-size: .82rem; }
+.rcard textarea { min-height: 3.2em; }
+.rcard .rbtns { display: grid; grid-template-columns: 1fr 2fr; gap: 8px; }
+.xbub { position: fixed; right: 12px; top: 45%; z-index: 30; display: flex; flex-direction: row-reverse; align-items: center; gap: 8px; touch-action: none; }
+.xbub > button { width: 52px; height: 52px; border-radius: 50%; border: 0; background: var(--surface); color: var(--ink); font-size: 22px; box-shadow: 0 4px 14px rgba(0,0,0,.35); display: grid; place-items: center; position: relative; cursor: grab; }
+.xbub > button b { position: absolute; top: -4px; right: -4px; min-width: 22px; height: 22px; padding: 0 5px; border-radius: 11px; background: #f59e0b; color: #1f1300; font: 800 .8rem/22px var(--display); }
+.xbub > button b:empty { display: none; }
+.xbub.drag > button { cursor: grabbing; transform: scale(1.08); }
+.xpop { flex-direction: column; flex-wrap: nowrap; margin: 0; padding: 8px; border-radius: 16px; background: var(--surface); box-shadow: 0 4px 14px rgba(0,0,0,.35); }
+.xpop[hidden] { display: none !important; }
+.photorow { display: flex; gap: 10px; align-items: center; }
+.photorow img { width: 56px; height: 56px; object-fit: cover; border-radius: 10px; border: 1px solid var(--line); }
+.pkview { position: fixed; inset: 0; z-index: 2000; background: rgba(0,0,0,.88); display: grid; place-items: center; padding: 16px; }
+.pkview img { max-width: 100%; max-height: 78vh; border-radius: 12px; }
+.pkview p { color: #fff; font: 600 1rem var(--display); text-align: center; margin: 10px 0 0; }
+.pop img.pkmini { width: 100%; max-height: 140px; object-fit: cover; border-radius: 8px; margin-top: 6px; cursor: zoom-in; }
 .xpick { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
 .xpick button { min-width: 44px; height: 36px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: 700 .95rem var(--display); cursor: pointer; }
 .xpick button.on { background: #f59e0b; border-color: #f59e0b; color: #1f1300; }
@@ -295,8 +318,10 @@ input:disabled { opacity: .45; }
     <label class="label newonly" for="refInput">Referencia (opcional)</label>
     <div class="refrow newonly"><input id="refInput" type="text" placeholder="Ej.: portón negro, timbre 2"><button class="btn mic" id="micBtn" type="button" aria-label="Dictar la referencia" hidden>🎤</button></div>
     <span class="note newonly" id="micInfo" hidden></span>
-    <label class="label newonly">¿Más paquetes en esta dirección?</label>
-    <div class="xpick newonly" id="newExtra"></div>
+    <label class="label newonly">Foto del paquete (opcional)</label>
+    <div class="photorow newonly"><button class="btn" id="pkPhotoBtn" type="button">📷 Sacar foto del paquete</button><img id="pkThumb" alt="Foto del paquete" hidden><button class="mini" id="pkPhotoDel" type="button" hidden>Quitar</button></div>
+    <input id="pkPhoto" type="file" accept="image/*" capture="environment" hidden>
+    <div class="xpick newonly" id="newExtra" hidden></div>
     <div class="checkmap newonly" id="checkMap" hidden></div>
     <span class="note newonly" id="checkInfo" hidden></span>
     <div class="assign newonly">
@@ -307,6 +332,12 @@ input:disabled { opacity: .45; }
   </div>
 </div>
 
+<button class="revbub" id="revBub" type="button" aria-label="Paquetes escaneados para revisar">📝<b id="revCnt"></b></button>
+<section id="p-review" class="sheet" hidden aria-label="Revisar paquetes">
+ <div class="sheet-head"><h2>Revisar paquetes</h2><button class="x" type="button" data-close aria-label="Cerrar">✕</button></div>
+ <p class="note" id="revEmpty">No hay paquetes para revisar. Lo que escanees aparece acá.</p>
+ <div id="revList"></div>
+</section>
 <div class="backdrop" id="backdrop" hidden></div>
   <section id="p-stops" class="sheet" hidden aria-label="Paradas">
    <div class="sheet-head"><h2>Paradas</h2><button class="x" type="button" data-close aria-label="Cerrar">✕</button></div>
@@ -427,6 +458,7 @@ input:disabled { opacity: .45; }
   function showTab(id) {
     if (id === "p-scan") { closeSheets(); openScanner(); return; }
     closeSheets(); $(id).hidden = false; $("backdrop").hidden = false;
+    if (id === "p-review") renderReview();
   }
   document.querySelectorAll(".fab[data-p]").forEach(t => t.addEventListener("click", () => showTab(t.dataset.p)));
   document.querySelectorAll("[data-close]").forEach(b => b.addEventListener("click", closeSheets));
@@ -599,6 +631,7 @@ input:disabled { opacity: .45; }
   }
 
   function removeItem(it) {
+    if (it.photo) fotos.del(it.num);
     items = items.filter(x => x.num !== it.num);
     if (route) route.order = route.order.filter(n => n !== it.num);
     save(); refresh(false);
@@ -664,11 +697,14 @@ input:disabled { opacity: .45; }
         ${it.extra ? `<div><span class="xtra" style="margin:0">+${it.extra}</span> ${it.extra === 1 ? "1 paquete más" : it.extra + " paquetes más"} en esta dirección</div>` : ""}
         ${it.ref ? `<div class="pref">🗒 ${esc(it.ref)}</div>` : `<div class="muted">Sin referencia</div>`}
         ${it.done ? "<div>✓ Entregada</div>" : ""}
+        ${it.photo ? '<img class="pkmini" alt="Foto del paquete" hidden>' : ""}
         <div class="pacts"><a class="mini" href="${gmaps(it)}" target="_blank" rel="noopener">Navegar</a>
         <button class="mini" type="button" data-a="edit">Editar</button>
         <button class="mini" type="button" data-a="done">${it.done ? "Deshacer" : "Entregada"}</button>
         <button class="mini" type="button" data-a="del">Eliminar</button></div>`;
       d.querySelector('[data-a="edit"]').addEventListener("click", () => { map.closePopup(); openEdit(it); });
+      const pm = d.querySelector(".pkmini");
+      if (pm) { fotos.get(it.num).then(b => { if (b) { pm.src = URL.createObjectURL(b); pm.hidden = false; } }); pm.addEventListener("click", () => showPhoto(it)); }
       d.querySelector('[data-a="done"]').addEventListener("click", () => { it.done = !it.done; save(); map.closePopup(); refresh(false); });
       d.querySelector('[data-a="del"]').addEventListener("click", (e) => {
         const b = e.currentTarget;
@@ -760,7 +796,7 @@ input:disabled { opacity: .45; }
       const t = document.createElement("b"); t.textContent = it.address;
       if (it.extra) { const x = document.createElement("span"); x.className = "xtra"; x.textContent = "+" + it.extra; x.title = it.extra + " paquete(s) más en esta dirección"; t.prepend(x); x.style.marginLeft = "0"; x.style.marginRight = "6px"; }
       const meta = document.createElement("small");
-      meta.textContent = code(it.num) + (typeof it.lat === "number" ? "" : " · sin ubicar") + (it.ref ? " · " + it.ref : "");
+      meta.textContent = code(it.num) + (it.photo ? " · 📷" : "") + (typeof it.lat === "number" ? "" : " · sin ubicar") + (it.ref ? " · " + it.ref : "");
       a.append(t, meta);
       const chk = document.createElement("button"); chk.type = "button"; chk.className = "dchk";
       chk.setAttribute("aria-label", it.done ? "Marcar como no entregada" : "Marcar como entregada"); chk.innerHTML = svg("ok");
@@ -782,7 +818,9 @@ input:disabled { opacity: .45; }
           if (pendingDelete !== it.num) { pendingDelete = it.num; render(); return; }
           pendingDelete = null; openRow = null; removeItem(it);
         });
-        acts.append(nav, see, ed, del); li.append(acts);
+        if (it.photo) { const ph = document.createElement("button"); ph.type = "button"; ph.innerHTML = '<span style="font-size:1.1rem">📷</span><span>Foto</span>'; ph.addEventListener("click", () => showPhoto(it)); acts.append(nav, see, ph, ed, del); }
+        else acts.append(nav, see, ed, del);
+        li.append(acts);
       }
       ol.append(li);
     });
@@ -818,7 +856,7 @@ input:disabled { opacity: .45; }
       $("navAll").href = u.toString(); $("navAll").hidden = false;
     } else $("navAll").hidden = true;
   }
-  function refresh(fit) { render(); drawMap(fit); }
+  function refresh(fit) { render(); drawMap(fit); renderReview(); }
 
   // ---------- escaneo (lectura en el teléfono) ----------
   async function shrink(file, max = 1800, gray = true) {
@@ -1079,7 +1117,7 @@ input:disabled { opacity: .45; }
     hidePreview();
     $("stage").classList.remove("is-verify"); $("verifyBox").hidden = true; pendingQR = "";
     $("stage").hidden = false; $("previewBox").hidden = false; $("lines").hidden = true;
-    $("previewImg").src = URL.createObjectURL(file); $("addrInput").value = ""; $("refInput").value = ""; lastRead = ""; setExtra($("newExtra"), 0);
+    $("previewImg").src = URL.createObjectURL(file); $("addrInput").value = ""; $("refInput").value = ""; lastRead = ""; setExtra($("newExtra"), 0); $("newExtra").hidden = true; newPhoto.reset();
     const st = $("scanStatus"); const say = (m, c) => { st.className = "status" + (c ? " " + c : ""); st.textContent = m; };
     say("Preparando la foto…"); $("saveBtn").disabled = true;
     const qr = await readQR(qrSrc || file);
@@ -1183,24 +1221,189 @@ input:disabled { opacity: .45; }
     if (!c) { if (!nativePhoto("CAMERA")) $("photo").click(); return; }
     const v = $("cam"), full = document.createElement("canvas"); full.width = v.videoWidth; full.height = v.videoHeight; full.getContext("2d").drawImage(v, 0, 0);
     $("frozen").src = c.toDataURL("image/jpeg", 0.9); $("frozen").hidden = false;
-    c.toBlob(b => { if (b) { $("scanControls").hidden = true; onPhoto(b, full); } }, "image/jpeg", 0.92);
+    c.toBlob(b => { if (b) scanToItem(b, full); }, "image/jpeg", 0.92);
   });
   $("galleryBtn").addEventListener("click", () => { if (!nativePhoto("PHOTOS")) $("gallery").click(); });
   // App de Android: foto con la cámara o la galería del teléfono (plugin Camera), por si la vista en vivo no abre.
   function nativePhoto(source) {
     const CAM = plug("Camera"); if (!CAM) return false;
     CAM.getPhoto({ source, resultType: "dataUrl", quality: 85, width: 1800, correctOrientation: true, saveToGallery: false })
-      .then(async (ph) => { const b = await (await fetch(ph.dataUrl)).blob(); $("scanControls").hidden = true; onPhoto(b); })
+      .then(async (ph) => { const b = await (await fetch(ph.dataUrl)).blob(); scanToItem(b); })
       .catch((e) => { if (!/cancel/i.test(String(e && e.message || e))) toast("No se pudo usar la cámara: " + (e.message || e), true); });
     return true;
   }
-  ["photo", "gallery"].forEach(id => $(id).addEventListener("change", e => { const f = e.target.files[0]; if (f) onPhoto(f); e.target.value = ""; }));
-  $("manualBtn").addEventListener("click", () => { hidePreview(); lastRead = ""; pendingQR = ""; $("stage").classList.remove("is-verify"); $("verifyBox").hidden = true; $("refInput").value = ""; setExtra($("newExtra"), 0); $("stage").hidden = false; $("scanControls").hidden = true; $("previewBox").hidden = true; $("lines").hidden = true; $("addrInput").focus(); });
-  ["photo", "gallery"].forEach(id => $(id).addEventListener("change", () => { $("scanControls").hidden = true; }));
+  ["photo", "gallery"].forEach(id => $(id).addEventListener("change", e => { const f = e.target.files[0]; if (f) scanToItem(f); e.target.value = ""; }));
+  // a mano: crea un paquete vacío y abre su tarjeta en la burbuja 📝
+  $("manualBtn").addEventListener("click", () => {
+    const it = { num: nextNum(), address: "", createdAt: new Date().toISOString(), review: true };
+    items.push(it); save(); closeScanner(); showTab("p-review");
+    const c = revCards.get(it.num); if (c) { c.scrollIntoView({ block: "start" }); c.querySelector("textarea").focus(); }
+  });
+  
+  // ---------- escaneo rápido: cada etiqueta se guarda sola y se revisa después desde la burbuja 📝 del mapa ----------
+  let reading = 0;
+  const scanIdle = "Encuadra la dirección dentro del recuadro y toca el botón";
+  const scanBusy = () => { $("scanHint").textContent = reading ? "Leyendo " + reading + (reading === 1 ? " etiqueta…" : " etiquetas…") + " Podés seguir escaneando." : scanIdle; };
+  // Lee la etiqueta: en Android ML Kit primero; si no cierra, la IA elegida; si no hay, el lector del teléfono.
+  async function readLabel(file) {
+    const aiv = $("aiSel").value, useAlt = aiv !== "gemini", AI = { llama: "Qwen" }[aiv] || "Gemini";
+    const ownKey = $({ llama: "groqInput" }[aiv] || "geminiInput").value.trim(), gkey = ownKey || (!useAlt && window.leerEnServidor ? "servidor" : "");
+    const ML = plug("LectorTexto") && !$("geminiAlwaysChk").checked;
+    const ocrP = (ML ? shrink(file, 2000, false) : shrink(file)).then(img => readText(img, () => {})).catch(() => null);
+    if (ML) { const o = solidRead(await ocrP); if (o) return { address: o, by: "ML Kit" }; }
+    if (gkey) {
+      try {
+        const got = await (useAlt ? (im, k) => readWithLlama(im, k, OAI[aiv]) : readWithGemini)(await shrink(file, 1600, false), ownKey);
+        if (got) {
+          let alt = "";
+          if (!ML) { const lines = await Promise.race([ocrP, new Promise(r => setTimeout(() => r(null), 30000))]); const o = lines && lines.length ? ocrAddress(lines) : ""; if (o && !sameAddress(got.address, o)) alt = o; }
+          return { address: got.address, ref: got.ref, alt, by: AI };
+        }
+      } catch (e) { console.warn("IA", e); }
+    }
+    const lines = await ocrP;
+    return { address: lines && lines.length ? ocrAddress(lines) : "", by: "teléfono" };
+  }
+  async function scanToItem(file, qrSrc) {
+    $("frozen").hidden = true; $("scanControls").hidden = false;
+    const qr = await readQR(qrSrc || file);
+    if (qr) {
+      const known = items.find(it => it.qr === qr);
+      if (known) { $("stage").hidden = false; $("previewBox").hidden = true; $("lines").hidden = true; $("scanControls").hidden = true; showVerify(known); return; }
+    }
+    // el número se reserva ya, así dos etiquetas seguidas no se pisan
+    const it = { num: nextNum(), address: "", createdAt: new Date().toISOString(), review: true }; if (qr) it.qr = qr;
+    items.push(it); save(); refresh(false);
+    reading++; scanBusy();
+    try {
+      const r = await readLabel(file);
+      it.address = r.address; it.read = r.address; if (r.ref) it.ref = r.ref; if (r.alt) it.alt = r.alt;
+      save(); refresh(false);
+      toast(r.address ? "✓ " + code(it.num) + " · " + r.address : code(it.num) + ": no leí la dirección, revisala en 📝", !r.address);
+      if (r.address) { try { const g = await geocode(r.address, $("keyInput").value.trim()); if (g) { it.lat = g.lat; it.lng = g.lng; save(); refresh(false); } } catch {} }
+    } catch (e) { toast(code(it.num) + ": no se pudo leer (" + (e.message || e) + "). Revisala en 📝", true); }
+    finally { reading--; scanBusy(); }
+  }
+
+  // Burbuja 📝 del mapa: tocarla abre los paquetes escaneados para revisar; arrastrarla la mueve.
+  (() => {
+    const bub = $("revBub"), pos = store.get("revBubPos", null);
+    const place = (x, y) => { x = Math.max(8, Math.min(innerWidth - 60, x)); y = Math.max(60, Math.min(innerHeight - 160, y)); bub.style.left = x + "px"; bub.style.top = y + "px"; bub.style.right = "auto"; return [x, y]; };
+    if (pos) place(pos[0], pos[1]);
+    let st = null;
+    bub.addEventListener("pointerdown", (e) => { const r = bub.getBoundingClientRect(); st = { x: e.clientX, y: e.clientY, ox: e.clientX - r.left, oy: e.clientY - r.top, moved: false }; try { bub.setPointerCapture(e.pointerId); } catch {} });
+    bub.addEventListener("pointermove", (e) => {
+      if (!st || (!st.moved && Math.hypot(e.clientX - st.x, e.clientY - st.y) < 8)) return;
+      st.moved = true; bub.classList.add("drag"); st.last = place(e.clientX - st.ox, e.clientY - st.oy);
+    });
+    bub.addEventListener("pointerup", () => { if (!st) return; if (st.moved) { bub.classList.remove("drag"); if (st.last) store.set("revBubPos", st.last); } else showTab("p-review"); st = null; });
+    bub.addEventListener("pointercancel", () => { st = null; bub.classList.remove("drag"); });
+  })();
+
+  // Tarjetas de revisión: dirección, referencia (con voz), +1…+5 y foto del paquete con su código.
+  const revCards = new Map();
+  function reviewCard(it) {
+    const c = document.createElement("div"); c.className = "rcard";
+    const stop = route ? route.order.indexOf(it.num) + 1 : 0;
+    c.innerHTML = `<div class="rhead"><b></b><span></span></div>
+      <label class="label">Dirección</label><textarea rows="2" data-f="addr"></textarea>
+      <button class="mini" type="button" data-f="alt" hidden style="text-align:left"></button>
+      <label class="label">Referencia (opcional)</label><div class="refrow"><input type="text" data-f="ref" placeholder="Ej.: portón negro, timbre 2"><button class="btn mic" type="button" data-f="mic" aria-label="Dictar la referencia">🎤</button></div>
+      <span class="note" data-f="note"></span>
+      <label class="label">¿Más paquetes en esta dirección?</label><div class="xpick" data-f="extra"></div>
+      <label class="label">Foto del paquete entero (para reconocerlo)</label><div class="photorow"><button class="btn" type="button" data-f="pbtn">📷 Sacar foto del paquete</button><img alt="Foto del paquete" data-f="pimg" hidden><button class="mini" type="button" data-f="pdel" hidden>Quitar</button></div><input type="file" accept="image/*" capture="environment" hidden data-f="pin">
+      <div class="rbtns"><button class="btn" type="button" data-f="del">Borrar</button><button class="btn btn-primary" type="button" data-f="ok">✓ Listo</button></div>`;
+    const f = (k) => c.querySelector(`[data-f="${k}"]`);
+    c.querySelector(".rhead b").textContent = code(it.num);
+    c.querySelector(".rhead span").textContent = (stop ? "Parada " + stop + " · " : "") + (it.address ? "" : "sin dirección");
+    f("addr").value = it.address; f("ref").value = it.ref || "";
+    suggestFor(f("addr"));
+    if (it.alt) { f("alt").hidden = false; f("alt").textContent = "El lector del teléfono leyó otra cosa: usar «" + it.alt + "»"; f("alt").addEventListener("click", () => { f("addr").value = it.alt; f("alt").hidden = true; }); }
+    const note = (m) => { f("note").textContent = m || ""; };
+    if (!SR) f("mic").hidden = true; else f("mic").addEventListener("click", () => dictate(f("ref"), f("mic"), note, true));
+    extraPicker(f("extra")); setExtra(f("extra"), it.extra || 0);
+    const ph = photoPicker(f("pbtn"), f("pimg"), f("pdel"), f("pin"));
+    if (it.photo) fotos.get(it.num).then(b => { if (b) ph.reset(b); });
+    f("del").addEventListener("click", () => {
+      if (!f("del").dataset.sure) { f("del").dataset.sure = "1"; f("del").textContent = "¿Seguro?"; f("del").classList.add("confirm"); return; }
+      removeItem(it); toast(code(it.num) + " eliminada");
+    });
+    f("ok").addEventListener("click", async () => {
+      stopMic();
+      const na = f("addr").value.replace(/\s+/g, " ").trim(), nr = f("ref").value.replace(/\s+/g, " ").trim();
+      if (!na) { note("Escribí la dirección antes de guardar."); f("addr").focus(); return; }
+      const moved = na !== it.address;
+      if (it.read && na !== it.read) rememberFix(it.read, na);
+      it.address = na; if (nr) it.ref = nr; else delete it.ref;
+      if (f("extra").value) it.extra = f("extra").value; else delete it.extra;
+      await ph.save(it);
+      delete it.review; delete it.alt; delete it.read;
+      if (moved) { delete it.lat; delete it.lng; }
+      save(); refresh(false); toast("✓ " + code(it.num) + " revisada");
+      if (moved || typeof it.lat !== "number") { try { const g = await geocode(na, $("keyInput").value.trim()); if (g) { it.lat = g.lat; it.lng = g.lng; save(); refresh(false); } else toast("No encontré " + code(it.num) + " en el mapa", true); } catch {} }
+    });
+    return c;
+  }
+  function renderReview() {
+    const list = items.filter(it => it.review);
+    $("revCnt").textContent = list.length || "";
+    if ($("p-review").hidden) { revCards.clear(); $("revList").textContent = ""; return; }
+    const keep = new Set(list.map(it => it.num));
+    revCards.forEach((c, n) => { if (!keep.has(n)) { c.remove(); revCards.delete(n); } });
+    list.forEach(it => {
+      let c = revCards.get(it.num);
+      if (!c) { c = reviewCard(it); revCards.set(it.num, c); }
+      else if (it.address && !c.querySelector('[data-f="addr"]').value && document.activeElement !== c.querySelector('[data-f="addr"]')) {
+        // terminó de leerse mientras la tarjeta estaba abierta: se rearma con lo leído
+        const n = reviewCard(it); c.replaceWith(n); revCards.set(it.num, n); c = n;
+      }
+      $("revList").append(c);
+    });
+    $("revEmpty").hidden = list.length > 0;
+  }
 
   function toast(m, bad) {
     if ($("scanner").hidden) { const mt = $("mapToast"); mt.textContent = m; mt.style.color = bad ? "#ff8a80" : "#fff"; mt.hidden = false; clearTimeout(toast.m); toast.m = setTimeout(() => mt.hidden = true, 3000); return; }
     const t = $("toast"); t.textContent = m; t.className = "scan-msg"; t.style.color = bad ? "#ff8a80" : "#9ff0c4"; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 3500); }
+
+  // ---------- fotos de los paquetes: se guardan en el teléfono (IndexedDB), por número de paquete ----------
+  const fotos = (() => {
+    let dbp = null;
+    const db = () => dbp || (dbp = new Promise((ok, no) => { const r = indexedDB.open("ruta-escaner-fotos", 1); r.onupgradeneeded = () => r.result.createObjectStore("fotos"); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); }));
+    const run = async (mode, fn) => { const d = await db(); return new Promise((ok, no) => { const tx = d.transaction("fotos", mode), q = fn(tx.objectStore("fotos")); tx.oncomplete = () => ok(q && q.result); tx.onerror = () => no(tx.error); }); };
+    return {
+      get: (n) => run("readonly", st => st.get(n)).catch(() => null),
+      put: (n, blob) => run("readwrite", st => st.put(blob, n)),
+      del: (n) => run("readwrite", st => st.delete(n)).catch(() => {}),
+    };
+  })();
+  // achica la foto para que no ocupe mucho (lado mayor 1200 px)
+  const pkShrink = (f) => shrink(f, 1200, false);
+  async function showPhoto(it) {
+    const b = await fotos.get(it.num); if (!b) { toast("No encontré la foto de este paquete", true); return; }
+    const stop = route ? route.order.indexOf(it.num) + 1 : 0;
+    const v = document.createElement("div"); v.className = "pkview";
+    const im = document.createElement("img"); im.src = URL.createObjectURL(b); im.alt = "Foto del paquete " + code(it.num);
+    const p = document.createElement("p"); p.textContent = (stop ? "Parada " + stop + " · " : "") + code(it.num) + " · " + it.address;
+    const w = document.createElement("div"); w.append(im, p); v.append(w);
+    v.addEventListener("click", () => { URL.revokeObjectURL(im.src); v.remove(); });
+    document.body.append(v);
+  }
+  // sección «Foto del paquete»: botón, miniatura y Quitar; devuelve el estado para guardar
+  function photoPicker(btn, thumb, del, input) {
+    const st = { blob: null, removed: false };
+    const show = (b) => { if (thumb.src) URL.revokeObjectURL(thumb.src); thumb.hidden = !b; del.hidden = !b; btn.textContent = b ? "📷 Cambiar foto" : "📷 Sacar foto del paquete"; if (b) thumb.src = URL.createObjectURL(b); else thumb.removeAttribute("src"); };
+    btn.addEventListener("click", () => input.click());
+    input.addEventListener("change", async () => { const f = input.files && input.files[0]; input.value = ""; if (!f) return; st.blob = await pkShrink(f); st.removed = false; show(st.blob); });
+    del.addEventListener("click", () => { st.blob = null; st.removed = true; show(null); });
+    st.reset = (b) => { st.blob = null; st.removed = false; show(b || null); };
+    st.save = async (it) => {
+      if (st.blob) { await fotos.put(it.num, st.blob).catch(() => {}); it.photo = true; }
+      else if (st.removed) { await fotos.del(it.num); delete it.photo; }
+    };
+    return st;
+  }
+  const newPhoto = photoPicker($("pkPhotoBtn"), $("pkThumb"), $("pkPhotoDel"), $("pkPhoto"));
 
   // Selector +1 … +5: paquetes de más para la misma dirección (tocar el marcado lo quita).
   function extraPicker(box) {
@@ -1212,7 +1415,9 @@ input:disabled { opacity: .45; }
       box.append(b);
     }
   }
-  function setExtra(box, n) { box.value = n || 0; box.querySelectorAll("button").forEach(b => b.classList.toggle("on", Number(b.dataset.n) === box.value)); }
+  function setExtra(box, n) {
+    box.value = n || 0; box.querySelectorAll("button").forEach(b => b.classList.toggle("on", Number(b.dataset.n) === box.value));
+  }
   extraPicker($("newExtra"));
   $("saveBtn").addEventListener("click", async () => {
     const address = $("addrInput").value.replace(/\s+/g, " ").trim();
@@ -1223,6 +1428,7 @@ input:disabled { opacity: .45; }
     hidePreview();
     const ref = $("refInput").value.replace(/\s+/g, " ").trim(); if (ref) it.ref = ref;
     if ($("newExtra").value) it.extra = $("newExtra").value;
+    await newPhoto.save(it); newPhoto.reset();
     rememberFix(lastRead.replace(/\s+/g, " "), address); lastRead = "";
     if (pendingQR) { it.qr = pendingQR; pendingQR = ""; }
     items.push(it); save();
@@ -1373,6 +1579,7 @@ input:disabled { opacity: .45; }
         + '<label class="label" for="editAddr">Dirección</label><div class="refrow"><textarea id="editAddr" rows="2"></textarea><button class="btn mic" id="editAddrMic" type="button" aria-label="Dictar la dirección">🎤</button></div>'
         + '<label class="label" for="editRef">Referencia</label><div class="refrow"><textarea id="editRef" rows="2" placeholder="Ej.: portón negro, timbre 2"></textarea><button class="btn mic" id="editRefMic" type="button" aria-label="Dictar la referencia">🎤</button></div>'
         + '<label class="label">Paquetes de más en esta dirección</label><div class="xpick" id="editExtra"></div>'
+        + '<label class="label">Foto del paquete entero (para reconocerlo)</label><div class="photorow"><button class="btn" id="editPhotoBtn" type="button">📷 Sacar foto del paquete</button><img id="editThumb" alt="Foto del paquete" hidden><button class="mini" id="editPhotoDel" type="button" hidden>Quitar</button></div><input id="editPhoto" type="file" accept="image/*" capture="environment" hidden>'
         + '<span class="note" id="editNote"></span><div class="erow"><button class="btn" id="editNo" type="button">Cancelar</button><button class="btn btn-primary" id="editOk" type="button">Guardar</button></div></div>';
       document.body.append(el);
       if (!SR) { $("editAddrMic").hidden = true; $("editRefMic").hidden = true; }
@@ -1384,6 +1591,7 @@ input:disabled { opacity: .45; }
       $("editNo").addEventListener("click", close);
       el.addEventListener("click", (e) => { if (e.target === el) close(); });
       extraPicker($("editExtra"));
+      el._ph = photoPicker($("editPhotoBtn"), $("editThumb"), $("editPhotoDel"), $("editPhoto"));
       $("editOk").addEventListener("click", async () => {
         const cur = el._it; stopMic();
         const na = $("editAddr").value.replace(/\s+/g, " ").trim(), nr = $("editRef").value.replace(/\s+/g, " ").trim();
@@ -1391,6 +1599,7 @@ input:disabled { opacity: .45; }
         const moved = na !== cur.address;
         cur.address = na; if (nr) cur.ref = nr; else delete cur.ref;
         if ($("editExtra").value) cur.extra = $("editExtra").value; else delete cur.extra;
+        await el._ph.save(cur);
         if (moved) { delete cur.lat; delete cur.lng; }
         save(); el.hidden = true; refresh(false); toast(code(cur.num) + " actualizada");
         if (moved) { try { const g = await geocode(na, $("keyInput").value.trim()); if (g) { cur.lat = g.lat; cur.lng = g.lng; save(); refresh(false); } else toast("No encontré la nueva dirección en el mapa", true); } catch {} }
@@ -1399,6 +1608,7 @@ input:disabled { opacity: .45; }
     el._it = it;
     $("editTitle").textContent = "Editar " + code(it.num);
     $("editAddr").value = it.address; $("editRef").value = it.ref || ""; $("editNote").textContent = ""; setExtra($("editExtra"), it.extra || 0);
+    el._ph.reset(); if (it.photo) fotos.get(it.num).then(b => { if (el._it === it && b) el._ph.reset(b); });
     el.hidden = false; setTimeout(() => $("editAddr").focus(), 50);
   }
   if (SR) {
@@ -1747,6 +1957,7 @@ input:disabled { opacity: .45; }
 
   $("clearDone").addEventListener("click", () => {
     const n = items.filter(i => i.done).length; if (!n) { return; }
+    items.forEach(i => { if (i.done && i.photo) fotos.del(i.num); });
     items = items.filter(i => !i.done); if (route) route.order = route.order.filter(x => byNum(x)); save(); refresh(false);
   });
   $("exportBtn").addEventListener("click", () => {
