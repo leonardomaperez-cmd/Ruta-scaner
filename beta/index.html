@@ -181,6 +181,11 @@ ol.stops li.done .dchk { background: var(--accent); border-color: transparent; c
 .empty { padding: 20px 14px; text-align: center; color: var(--muted); display: block !important; }
 .note { color: var(--muted); font-size: .82rem; }
 .check { display: flex; gap: 8px; align-items: center; }
+.sugg { margin: 4px 0 0; padding: 0; list-style: none; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; box-shadow: 0 6px 18px rgba(0,0,0,.12); }
+.sugg li { padding: 10px 12px; font: 500 .9rem var(--body); color: var(--ink); cursor: pointer; border-top: 1px solid var(--line); }
+.sugg li:first-child { border-top: 0; }
+.sugg li small { display: block; color: var(--muted); font-weight: 400; font-size: .78rem; }
+.sugg li:active, .sugg li.on { background: color-mix(in srgb, var(--accent, #006948) 12%, transparent); }
 input:disabled { opacity: .45; }
 [hidden] { display: none !important; }
 /* marcadores numerados */
@@ -1123,6 +1128,7 @@ input:disabled { opacity: .45; }
     return j && j[0] ? { lat: Number(j[0].lat), lng: Number(j[0].lon), label: j[0].display_name || "" } : null;
   }
   async function geocode(text, key) {
+    const pk = picked.get(text.replace(/\s+/g, " ").trim()); if (pk) return pk;
     if (!key) return geocodeOSM(text);
     const u = new URL("https://api.tomtom.com/search/2/geocode/" + encodeURIComponent(text) + ".json");
     u.searchParams.set("key", key); u.searchParams.set("limit", "1"); u.searchParams.set("language", "es-ES");
@@ -1166,6 +1172,59 @@ input:disabled { opacity: .45; }
   }
   $("addrInput").addEventListener("input", schedulePreview);
 
+  // ---------- sugerencias al escribir una dirección (Photon, de OpenStreetMap, gratis y sin clave) ----------
+  const picked = new Map(); // dirección elegida de la lista → su ubicación, para no volver a buscarla
+  function suggestFor(input, onPick) {
+    const box = document.createElement("ul"); box.className = "sugg"; box.hidden = true;
+    (input.closest(".refrow") || input).after(box);
+    let t = null, seq = 0;
+    const hide = () => { box.hidden = true; box.textContent = ""; };
+    input.addEventListener("input", () => {
+      clearTimeout(t);
+      const q = input.value.replace(/\s+/g, " ").trim();
+      if (q.length < 4 || picked.has(q)) { hide(); return; }
+      t = setTimeout(async () => {
+        const my = ++seq;
+        try {
+          const u = new URL("https://photon.komoot.io/api/");
+          u.searchParams.set("q", q); u.searchParams.set("limit", "8");
+          const near = meLast || (map && map.getCenter && [map.getCenter().lat, map.getCenter().lng]);
+          if (near) { u.searchParams.set("lat", near[0].toFixed(4)); u.searchParams.set("lon", near[1].toFixed(4)); }
+          const r = await fetch(u); if (!r.ok) throw new Error(r.status);
+          const j = await r.json(); if (my !== seq) return;
+          const cc = $("countryInput").value.trim().toUpperCase();
+          const seen = new Set(), list = [];
+          (j.features || []).forEach(f => {
+            const p = f.properties || {}, c = f.geometry && f.geometry.coordinates;
+            if (!c || (/^[A-Z]{2}$/.test(cc) && p.countrycode && p.countrycode.toUpperCase() !== cc)) return;
+            const street = p.street ? p.street + (p.housenumber ? " " + p.housenumber : "") : (p.name || "");
+            const place = [p.district || p.locality, p.city || p.county, p.state].filter((x, i, a) => x && a.indexOf(x) === i && x !== street).join(", ");
+            if (!street) return;
+            const text = street + (place ? ", " + place : ""), key = text.toLowerCase();
+            if (seen.has(key)) return; seen.add(key);
+            list.push({ street, place, text, lat: c[1], lng: c[0] });
+          });
+          box.textContent = "";
+          list.slice(0, 5).forEach(o => {
+            const li = document.createElement("li"); li.textContent = o.street;
+            if (o.place) { const sm = document.createElement("small"); sm.textContent = o.place; li.append(sm); }
+            li.addEventListener("pointerdown", (e) => {
+              e.preventDefault();
+              picked.set(o.text, { lat: o.lat, lng: o.lng, label: o.text });
+              input.value = o.text; hide(); onPick && onPick(o);
+              input.dispatchEvent(new Event("change"));
+            });
+            box.append(li);
+          });
+          box.hidden = !box.children.length;
+        } catch { hide(); }
+      }, 350);
+    });
+    input.addEventListener("blur", () => setTimeout(hide, 200));
+  }
+  suggestFor($("addrInput"), () => schedulePreview());
+  suggestFor($("startInput"));
+
   // ---------- referencia por voz (dictado del navegador) ----------
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   let rec = null;
@@ -1196,6 +1255,7 @@ input:disabled { opacity: .45; }
       document.body.append(el);
       if (!SR) { $("editAddrMic").hidden = true; $("editRefMic").hidden = true; }
       const note = (m) => { $("editNote").textContent = m; };
+      suggestFor($("editAddr"));
       $("editAddrMic").addEventListener("click", () => dictate($("editAddr"), $("editAddrMic"), note, true));
       $("editRefMic").addEventListener("click", () => dictate($("editRef"), $("editRefMic"), note, true));
       const close = () => { stopMic(); el.hidden = true; };
