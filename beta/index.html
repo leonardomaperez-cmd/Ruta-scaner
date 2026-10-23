@@ -43,6 +43,12 @@ body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--body); ov
 .chip { position: fixed; top: calc(10px + var(--top)); left: 12px; right: 12px; z-index: 500; display: flex; justify-content: center; pointer-events: none; }
 .chip span { pointer-events: auto; background: color-mix(in srgb, var(--surface) 90%, transparent); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); color: var(--ink); font: 600 .88rem/1.35 var(--display); padding: 7px 16px; border-radius: 18px; white-space: pre-line; text-align: center; box-shadow: 0 2px 10px rgba(0,0,0,.3); }
 .chip span:empty { display: none; }
+.chip span { touch-action: pan-y; user-select: none; -webkit-user-select: none; position: relative; }
+.chip span.multi { cursor: pointer; padding-bottom: 12px; }
+.chip span.multi::after { content: "● ○"; position: absolute; left: 0; right: 0; bottom: 2px; font-size: 6px; letter-spacing: 2px; opacity: .6; }
+.chip span.multi[data-page="1"]::after { content: "○ ●"; }
+.chip span.flip { animation: chipflip .25s ease; }
+@keyframes chipflip { from { opacity: .3; transform: scale(.96); } to { opacity: 1; transform: none; } }
 /* paneles que suben desde abajo */
 .backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 900; }
 .sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 950; max-height: 82vh; overflow-y: auto; background: var(--bg); border-radius: 20px 20px 0 0; padding-inline: 16px; padding-block: 0 calc(24px + env(safe-area-inset-bottom, 0px)); box-shadow: 0 -6px 24px rgba(0,0,0,.35); }
@@ -665,6 +671,15 @@ input:disabled { opacity: .45; }
     return d;
   }
 
+  let chipPages = [], chipPage = 0;
+  function chipFlip(dir) { if (chipPages.length < 2) return; chipPage = (chipPage + (dir || 1) + chipPages.length) % chipPages.length; const c = $("chipSummary"); c.textContent = chipPages[chipPage]; c.dataset.page = chipPage; c.classList.remove("flip"); void c.offsetWidth; c.classList.add("flip"); }
+  (() => {
+    const c = $("chipSummary"); let x0 = null, moved = false;
+    c.addEventListener("pointerdown", (e) => { x0 = e.clientX; moved = false; });
+    c.addEventListener("pointermove", (e) => { if (x0 != null && Math.abs(e.clientX - x0) > 25) { moved = true; chipFlip(e.clientX < x0 ? 1 : -1); x0 = null; } });
+    c.addEventListener("pointerup", () => { if (x0 != null && !moved) chipFlip(1); x0 = null; });
+    c.addEventListener("pointercancel", () => { x0 = null; });
+  })();
   function drawMap(fit) {
     layer.clearLayers();
     const pts = [];
@@ -767,7 +782,23 @@ input:disabled { opacity: .45; }
     // paquetes: cada parada cuenta 1 más sus +1…+5
     const pk = (arr) => arr.reduce((n, it) => n + 1 + (it.extra || 0), 0), total = pk(list), given = pk(list.filter(it => it.done));
     const pkText = total ? "📦 " + given + "/" + total + (given === total ? " ✓" : "") : "";
-    $("chipSummary").textContent = [route && route.summary ? route.summary + (left ? " · faltan " + left + (left === 1 ? " parada" : " paradas") : "") : "", pkText].filter(Boolean).join("\n");
+    // Arriba: solo los paquetes; tocando o deslizando muestra km, duración y hora estimada de fin.
+    let info = "";
+    if (route && route.summary) {
+      const all = route.order.length || 1, pend = route.order.filter(n => { const it = byNum(n); return it && !it.done; }).length;
+      const parts = [typeof route.m === "number" ? (route.m / 1000).toFixed(1) + " km" : route.summary.split(" · ")[0]];
+      if (typeof route.s === "number") {
+        const min = Math.round(route.s / 60); parts.push(min >= 60 ? Math.floor(min / 60) + " h " + (min % 60) + " min" : min + " min");
+        const end = new Date(Date.now() + route.s * 1000 * pend / all);
+        parts.push(pend ? "termina ~" + end.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false }) : "terminada");
+      } else parts.push(route.summary.split(" · ").slice(1).join(" · "));
+      info = parts.filter(Boolean).join(" · ") + (left ? "\nfaltan " + left + (left === 1 ? " parada" : " paradas") : "");
+    }
+    chipPages = [pkText, info].filter(Boolean);
+    if (chipPage >= chipPages.length) chipPage = 0;
+    $("chipSummary").textContent = chipPages[chipPage] || "";
+    $("chipSummary").classList.toggle("multi", chipPages.length > 1);
+    $("chipSummary").dataset.page = chipPage;
     const pending = list.filter(it => !it.done).slice(0, 10);
     if (pending.length) {
       const u = new URL("https://www.google.com/maps/dir/");
@@ -1409,7 +1440,7 @@ input:disabled { opacity: .45; }
           } catch {}
         }
         const min = Math.round(res.s / 60);
-        route = { order: res.order, line: res.line, start: startText || gotHere ? start : null,
+        route = { order: res.order, line: res.line, start: startText || gotHere ? start : null, m: res.m, s: res.s,
           summary: (res.m / 1000).toFixed(1) + " km · " + (min >= 60 ? Math.floor(min / 60) + " h " + (min % 60) + " min" : min + " min") + (back ? " ida y vuelta" : "") };
         save(); refresh(true);
         const warn = far.length ? far.map(code).join(", ") + " quedó lejos del resto y no se incluyó; revisa la dirección (agrega ciudad) o pon el país en Ajustes. "
@@ -1438,7 +1469,7 @@ input:disabled { opacity: .45; }
       useLegs.forEach(l => { m += l.summary.lengthInMeters; s += l.summary.travelTimeInSeconds; (l.points || []).forEach(p => line.push([p.latitude, p.longitude])); });
       const min = Math.round(s / 60);
       route = {
-        order, line, start: startText || gotHere ? start : null,
+        m, s, order, line, start: startText || gotHere ? start : null,
         summary: (m / 1000).toFixed(1) + " km · " + (min >= 60 ? Math.floor(min / 60) + " h " + (min % 60) + " min" : min + " min") + (back ? " ida y vuelta" : ""),
       };
       save(); refresh(true);
