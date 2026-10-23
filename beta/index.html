@@ -309,7 +309,7 @@ input:disabled { opacity: .45; }
       <input id="geminiInput" type="password" autocomplete="off" placeholder="Pega tu clave de Google AI Studio">
       <span class="note">Opcional y gratis en aistudio.google.com. Con ella, la foto la lee Gemini y saca solo la dirección del destinatario. Sin ella, se lee en el teléfono. En el plan gratuito Google puede usar las fotos para mejorar sus productos.</span>
       <label class="label" for="startInput">Punto de partida</label>
-      <input id="startInput" type="text" placeholder="Ej.: Depósito, Av. Rivadavia 5000, CABA">
+      <input id="startInput" type="text" placeholder="Vacío = desde donde estés al optimizar">
       <label class="check"><input id="hereChk" type="checkbox"> Salir desde mi ubicación actual</label>
       <label class="check"><input id="returnChk" type="checkbox"> Volver al punto de partida al final</label>
       <label class="check" id="geminiAlwaysBox" hidden><input id="geminiAlwaysChk" type="checkbox"> Leer siempre con Gemini (si no, lee primero ML Kit en el teléfono y Gemini solo cuando no cierra)</label>
@@ -1226,10 +1226,10 @@ input:disabled { opacity: .45; }
   }
 
   // Ubicación actual para salir desde ahí: la del punto azul si es reciente, si no se pide una vez.
-  function whereAmI() {
+  function whereAmI(wait = 20000) {
     if (meLast && Date.now() - meAt < 120000) return Promise.resolve({ lat: meLast[0], lng: meLast[1] });
     if (!navigator.geolocation) return Promise.resolve(null);
-    return new Promise(r => navigator.geolocation.getCurrentPosition(p => r({ lat: p.coords.latitude, lng: p.coords.longitude }), () => r(null), { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 }));
+    return new Promise(r => navigator.geolocation.getCurrentPosition(p => r({ lat: p.coords.latitude, lng: p.coords.longitude }), () => r(null), { enableHighAccuracy: true, timeout: wait, maximumAge: 60000 }));
   }
   async function optimize(fromHere) {
     const st = $("optStatus"); const say = (m, c) => { st.className = "status" + (c ? " " + c : ""); st.textContent = m; };
@@ -1259,13 +1259,18 @@ input:disabled { opacity: .45; }
       }
       const missing = todo.length - located.length;
       if (!located.length) { say("No se encontró ninguna dirección. Revisa que tengan calle, número y ciudad.", "err"); return; }
-      let start;
+      let start, gotHere = here;
       if (here) {
         say("Buscando tu ubicación actual…");
         start = await whereAmI();
         if (!start) { say("No pude obtener tu ubicación. Activá la ubicación del teléfono o escribí el punto de partida.", "err"); return; }
       } else if (startText) { say("Ubicando el punto de partida…"); start = await geocode(startText, key); if (!start) { say("No encontré el punto de partida. Escríbelo con calle, número y ciudad.", "err"); return; } }
-      else start = { lat: located[0].lat, lng: located[0].lng };
+      else {
+        // sin punto de partida escrito: sale desde donde estás ahora; si el teléfono no da la ubicación, desde la primera parada
+        say("Buscando tu ubicación actual…");
+        start = await whereAmI(8000);
+        if (start) gotHere = true; else start = { lat: located[0].lat, lng: located[0].lng };
+      }
       const back = $("returnChk").checked;
       if (!key) {
         say("Calculando la mejor ruta…");
@@ -1285,7 +1290,7 @@ input:disabled { opacity: .45; }
           } catch {}
         }
         const min = Math.round(res.s / 60);
-        route = { order: res.order, line: res.line, start: startText || here ? start : null,
+        route = { order: res.order, line: res.line, start: startText || gotHere ? start : null,
           summary: (res.m / 1000).toFixed(1) + " km · " + (min >= 60 ? Math.floor(min / 60) + " h " + (min % 60) + " min" : min + " min") + (back ? " ida y vuelta" : "") };
         save(); refresh(true);
         const warn = far.length ? "Nº " + far.map(pad).join(", ") + " quedó lejos del resto y no se incluyó; revisa la dirección (agrega ciudad) o pon el país en Ajustes. "
@@ -1314,7 +1319,7 @@ input:disabled { opacity: .45; }
       useLegs.forEach(l => { m += l.summary.lengthInMeters; s += l.summary.travelTimeInSeconds; (l.points || []).forEach(p => line.push([p.latitude, p.longitude])); });
       const min = Math.round(s / 60);
       route = {
-        order, line, start: startText || here ? start : null,
+        order, line, start: startText || gotHere ? start : null,
         summary: (m / 1000).toFixed(1) + " km · " + (min >= 60 ? Math.floor(min / 60) + " h " + (min % 60) + " min" : min + " min") + (back ? " ida y vuelta" : ""),
       };
       save(); refresh(true);
