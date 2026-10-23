@@ -771,9 +771,10 @@ input:disabled { opacity: .45; }
   let pendingDelete = null, openRow = null;
   function render() {
     $("nextTag").textContent = code(nextNum());
-    $("countTab").textContent = items.length ? String(items.length) : "";
+    $("countTab").textContent = items.filter(it => it.address).length || "";
     const ol = $("stops"); ol.textContent = "";
-    const list = orderedItems(); const lt = letters();
+    // lo escaneado sin dirección todavía no es una parada: se completa en la burbuja 📝
+    const list = orderedItems().filter(it => it.address); const lt = letters();
     if (!list.length) {
       const li = document.createElement("li"); li.className = "empty";
       li.textContent = "Todavía no hay paradas. Escanea una etiqueta y la primera quedará como A1.";
