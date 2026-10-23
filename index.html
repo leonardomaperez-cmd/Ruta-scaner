@@ -708,7 +708,7 @@ input:disabled { opacity: .45; }
       const t = document.createElement("b"); t.textContent = it.address;
       if (it.extra) { const x = document.createElement("span"); x.className = "xtra"; x.textContent = "+" + it.extra; x.title = it.extra + " paquete(s) más en esta dirección"; t.prepend(x); x.style.marginLeft = "0"; x.style.marginRight = "6px"; }
       const meta = document.createElement("small");
-      meta.textContent = "Nº " + pad(it.num) + (stop && l ? " · Letra " + l : "") + (typeof it.lat === "number" ? "" : " · sin ubicar") + (it.ref ? " · " + it.ref : "");
+      meta.textContent = (stop && l ? l + it.num : "Nº " + pad(it.num)) + (typeof it.lat === "number" ? "" : " · sin ubicar") + (it.ref ? " · " + it.ref : "");
       a.append(t, meta);
       const chk = document.createElement("button"); chk.type = "button"; chk.className = "dchk";
       chk.setAttribute("aria-label", it.done ? "Marcar como no entregada" : "Marcar como entregada"); chk.innerHTML = svg("ok");
