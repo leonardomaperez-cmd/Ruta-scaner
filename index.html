@@ -1276,12 +1276,13 @@ input:disabled { opacity: .45; }
         say("Calculando la mejor ruta…");
         let res, note = "";
         const few = located.slice(0, 99);
-        // OSRM primero; si falla, Valhalla; si los dos fallan, orden aproximado en el teléfono
-        try { res = await routeOSRM(start, few, back); }
+        // El teléfono ordena con los tiempos reales de OSRM; si no responde, OSRM solo, después Valhalla y al final orden aproximado
+        try { res = await routeMatrix(start, few, back); }
+        catch (e0) { console.warn("matriz", e0); try { res = await routeOSRM(start, few, back); }
         catch (e1) {
           try { res = await routeValhalla(start, few, back); }
           catch (e2) { res = await routeLocal(start, few, back); note = " (orden aproximado: " + (e1.message || e1) + " / " + (e2.message || e2) + ")"; }
-        }
+        } }
         if (!res.line || res.line.length < 2) {
           try {
             const pts = [start, ...res.order.map(byNum), ...(back ? [start] : [])];
@@ -1396,6 +1397,63 @@ input:disabled { opacity: .45; }
   }
   // Respaldo si el servidor de rutas falla: orden por cercanía (vecino más cercano + mejora 2-opt),
   // y el trazado por calles del servidor si responde; si no, líneas rectas.
+  // Ruta sin clave, primera opción: OSRM da los tiempos de manejo entre todas las paradas (un solo pedido)
+  // y el teléfono busca el orden: arranca yendo a la más cercana y después prueba dar vuelta tramos y mover
+  // paradas mientras ahorre tiempo. La línea del mapa la dibuja OSRM después con el orden final.
+  async function routeMatrix(start, stops, back) {
+    const pts = [start, ...stops];
+    const u = "https://router.project-osrm.org/table/v1/driving/" + pts.map(p => p.lng.toFixed(6) + "," + p.lat.toFixed(6)).join(";") + "?annotations=duration,distance";
+    const r = await fetch(u);
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.code !== "Ok" || !j.durations) throw new Error("tabla de tiempos " + r.status + (j.code ? " " + j.code : ""));
+    const T = j.durations, D = j.distances || T;
+    if (T.some(row => row.some(v => v == null))) throw new Error("hay paradas sin camino");
+    const tour = bestOrder(T, back);
+    let m = 0, s = 0; const full = back ? [...tour, 0] : tour;
+    for (let i = 0; i < full.length - 1; i++) { s += T[full[i]][full[i + 1]]; m += D[full[i]][full[i + 1]]; }
+    return { order: tour.slice(1).map(i => stops[i - 1].num), line: null, m, s };
+  }
+  // Orden de visita (empieza en 0 = salida) que minimiza el tiempo total según la tabla T.
+  // Mejora el orden hasta que ningún cambio ahorra tiempo; después lo sacude un poco y vuelve a probar (1 segundo).
+  function bestOrder(T, back) {
+    const n = T.length; if (n <= 2) return [...Array(n).keys()];
+    const cost = (t) => { let c = 0; for (let i = 0; i < t.length - 1; i++) c += T[t[i]][t[i + 1]]; return back ? c + T[t[t.length - 1]][0] : c; };
+    const until = Date.now() + 1000;
+    const improve = (t) => {
+      let best = cost(t);
+      for (let imp = true; imp && Date.now() < until;) {
+        imp = false;
+        // dar vuelta un tramo
+        for (let i = 1; i < n - 1; i++) for (let k = i + 1; k < n; k++) {
+          const c = t.slice(0, i).concat(t.slice(i, k + 1).reverse(), t.slice(k + 1)), v = cost(c);
+          if (v < best - 0.5) { t = c; best = v; imp = true; }
+        }
+        // mover 1, 2 o 3 paradas seguidas a otro lugar
+        for (let len = 1; len <= 3; len++) for (let i = 1; i + len <= n; i++) {
+          const seg = t.slice(i, i + len), rest = t.slice(0, i).concat(t.slice(i + len));
+          for (let k = 1; k <= rest.length; k++) {
+            if (k === i) continue;
+            const c = rest.slice(0, k).concat(seg, rest.slice(k)), v = cost(c);
+            if (v < best - 0.5) { t = c; best = v; imp = true; break; }
+          }
+        }
+      }
+      return [t, best];
+    };
+    const left = new Set([...Array(n).keys()].slice(1)), t0 = [0];
+    while (left.size) { const a = t0[t0.length - 1]; let b = -1; left.forEach(x => { if (b < 0 || T[a][x] < T[a][b]) b = x; }); t0.push(b); left.delete(b); }
+    let [best, bc] = improve(t0);
+    let seed = 1; const rnd = (k) => 1 + Math.floor(((seed = seed * 16807 % 2147483647) / 2147483647) * k);
+    while (Date.now() < until && n > 4) {
+      // sacudida: corta el recorrido en tres puntos y reordena los pedazos
+      const c = [rnd(n - 1), rnd(n - 1), rnd(n - 1)].sort((a, b) => a - b);
+      if (c[0] === c[1] || c[1] === c[2]) continue;
+      const kick = best.slice(0, c[0]).concat(best.slice(c[1], c[2]), best.slice(c[0], c[1]), best.slice(c[2]));
+      const [t, v] = improve(kick);
+      if (v < bc - 0.5) { best = t; bc = v; }
+    }
+    return best;
+  }
   async function routeLocal(start, stops, back) {
     const left = stops.slice(), path = []; let cur = start;
     while (left.length) { let bi = 0; for (let i = 1; i < left.length; i++) if (kmBetween(cur, left[i]) < kmBetween(cur, left[bi])) bi = i; cur = left.splice(bi, 1)[0]; path.push(cur); }
