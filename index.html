@@ -102,8 +102,6 @@ body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--body); ov
 .me-dot { width: 16px; height: 16px; border-radius: 50%; background: #1a73e8; border: 3px solid #fff; box-shadow: 0 0 0 2px rgba(26,115,232,.35), 0 1px 4px rgba(0,0,0,.4); }
 /* botones del mapa: a la derecha, a media altura, redondos como los de abajo */
 .map-ctl { position: fixed; right: 12px; top: 50%; transform: translateY(-50%); z-index: 500; display: grid; gap: 12px; }
-.map-ctl .zoom { display: grid; border-radius: 24px; overflow: hidden; background: var(--surface); box-shadow: 0 4px 14px rgba(0,0,0,.35); }
-.map-ctl .zoom button + button { border-top: 1px solid var(--line); }
 .map-ctl button { width: 48px; height: 48px; display: grid; place-items: center; border: 0; background: var(--surface); color: var(--ink); cursor: pointer; padding: 0; }
 .map-ctl button svg { width: 22px; height: 22px; }
 .map-ctl .locate-btn { border-radius: 50%; box-shadow: 0 4px 14px rgba(0,0,0,.35); }
@@ -580,14 +578,11 @@ input:disabled { opacity: .45; }
     try { wakeLock = await navigator.wakeLock.request("screen"); wakeLock.addEventListener("release", () => { wakeLock = null; }); } catch {}
   }
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && meWatch != null) keepAwake(); });
-  // + / − y centrar en mi ubicación
+  // centrar en mi ubicación (el zoom se hace con dos dedos)
   const ctl = document.createElement("div"); ctl.className = "map-ctl";
   const ico = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
-  ctl.innerHTML = '<div class="zoom"><button type="button" class="zin" aria-label="Acercar">' + ico('<path d="M12 5v14M5 12h14"/>') + '</button><button type="button" class="zout" aria-label="Alejar">' + ico('<path d="M5 12h14"/>') + '</button></div>'
-    + '<button type="button" class="locate-btn" aria-label="Mi ubicación" title="Mi ubicación">' + ico('<circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8" stroke-width="1.6"/>') + '</button>';
+  ctl.innerHTML = '<button type="button" class="locate-btn" aria-label="Mi ubicación" title="Mi ubicación">' + ico('<circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8" stroke-width="1.6"/>') + '</button>';
   document.body.append(ctl);
-  ctl.querySelector(".zin").addEventListener("click", () => map.zoomIn());
-  ctl.querySelector(".zout").addEventListener("click", () => map.zoomOut());
   const locBtn = ctl.querySelector(".locate-btn");
   locBtn.addEventListener("click", () => startMe(true));
   // si ya diste permiso antes, el punto aparece solo al abrir la app
