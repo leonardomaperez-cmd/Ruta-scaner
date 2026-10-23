@@ -204,6 +204,7 @@ input:disabled { opacity: .45; }
 .revbub b:empty { display: none; }
 .revbub.drag { transform: scale(1.1); cursor: grabbing; }
 .rcard { border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 14px; padding: 12px; margin-bottom: 12px; display: grid; gap: 8px; background: var(--surface); }
+.rcard.ok { border-left-color: var(--line); }
 .rcard .rhead { display: flex; align-items: center; gap: 8px; }
 .rcard .rhead b { font: 700 1.3rem var(--display); }
 .rcard .rhead span { color: var(--muted); font-size: .82rem; }
@@ -332,10 +333,10 @@ input:disabled { opacity: .45; }
   </div>
 </div>
 
-<button class="revbub" id="revBub" type="button" aria-label="Paquetes escaneados para revisar">📝<b id="revCnt"></b></button>
+<button class="revbub" id="revBub" type="button" aria-label="Paquetes: revisar, referencia y foto">📝<b id="revCnt"></b></button>
 <section id="p-review" class="sheet" hidden aria-label="Revisar paquetes">
- <div class="sheet-head"><h2>Revisar paquetes</h2><button class="x" type="button" data-close aria-label="Cerrar">✕</button></div>
- <p class="note" id="revEmpty">No hay paquetes para revisar. Lo que escanees aparece acá.</p>
+ <div class="sheet-head"><h2>Paquetes</h2><button class="x" type="button" data-close aria-label="Cerrar">✕</button></div>
+ <p class="note" id="revEmpty">Todavía no hay paquetes. Lo que escanees aparece acá.</p>
  <div id="revList"></div>
 </section>
 <div class="backdrop" id="backdrop" hidden></div>
@@ -1303,7 +1304,7 @@ input:disabled { opacity: .45; }
   // Tarjetas de revisión: dirección, referencia (con voz), +1…+5 y foto del paquete con su código.
   const revCards = new Map();
   function reviewCard(it) {
-    const c = document.createElement("div"); c.className = "rcard";
+    const c = document.createElement("div"); c.className = "rcard" + (it.review ? "" : " ok");
     const stop = route ? route.order.indexOf(it.num) + 1 : 0;
     c.innerHTML = `<div class="rhead"><b></b><span></span></div>
       <label class="label">Dirección</label><textarea rows="2" data-f="addr"></textarea>
@@ -1315,7 +1316,7 @@ input:disabled { opacity: .45; }
       <div class="rbtns"><button class="btn" type="button" data-f="del">Borrar</button><button class="btn btn-primary" type="button" data-f="ok">✓ Listo</button></div>`;
     const f = (k) => c.querySelector(`[data-f="${k}"]`);
     c.querySelector(".rhead b").textContent = code(it.num);
-    c.querySelector(".rhead span").textContent = (stop ? "Parada " + stop + " · " : "") + (it.address ? "" : "sin dirección");
+    c.querySelector(".rhead span").textContent = (stop ? "Parada " + stop + " · " : "") + (it.address ? (it.review ? "para revisar" : "") : "sin dirección");
     f("addr").value = it.address; f("ref").value = it.ref || "";
     suggestFor(f("addr"));
     if (it.alt) { f("alt").hidden = false; f("alt").textContent = "El lector del teléfono leyó otra cosa: usar «" + it.alt + "»"; f("alt").addEventListener("click", () => { f("addr").value = it.alt; f("alt").hidden = true; }); }
@@ -1339,20 +1340,22 @@ input:disabled { opacity: .45; }
       await ph.save(it);
       delete it.review; delete it.alt; delete it.read;
       if (moved) { delete it.lat; delete it.lng; }
-      save(); refresh(false); toast("✓ " + code(it.num) + " revisada");
+      save(); refresh(false); toast("✓ " + code(it.num) + " guardada");
       if (moved || typeof it.lat !== "number") { try { const g = await geocode(na, $("keyInput").value.trim()); if (g) { it.lat = g.lat; it.lng = g.lng; save(); refresh(false); } else toast("No encontré " + code(it.num) + " en el mapa", true); } catch {} }
     });
     return c;
   }
   function renderReview() {
-    const list = items.filter(it => it.review);
-    $("revCnt").textContent = list.length || "";
+    // arriba lo recién escaneado (para revisar); abajo el resto de las paradas sin entregar, en orden de ruta
+    const pos = (it) => route && route.order.includes(it.num) ? route.order.indexOf(it.num) : 1e6 + it.num;
+    const list = items.filter(it => it.review || !it.done).sort((a, b) => (b.review ? 1 : 0) - (a.review ? 1 : 0) || pos(a) - pos(b));
+    $("revCnt").textContent = items.filter(it => it.review).length || "";
     if ($("p-review").hidden) { revCards.clear(); $("revList").textContent = ""; return; }
     const keep = new Set(list.map(it => it.num));
     revCards.forEach((c, n) => { if (!keep.has(n)) { c.remove(); revCards.delete(n); } });
     list.forEach(it => {
       let c = revCards.get(it.num);
-      if (!c) { c = reviewCard(it); revCards.set(it.num, c); }
+      if (!c || c.classList.contains("ok") === !!it.review) { const n = reviewCard(it); if (c) c.replaceWith(n); c = n; revCards.set(it.num, c); }
       else if (it.address && !c.querySelector('[data-f="addr"]').value && document.activeElement !== c.querySelector('[data-f="addr"]')) {
         // terminó de leerse mientras la tarjeta estaba abierta: se rearma con lo leído
         const n = reviewCard(it); c.replaceWith(n); revCards.set(it.num, n); c = n;
