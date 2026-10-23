@@ -204,6 +204,7 @@ input:disabled { opacity: .45; }
 .revbub b:empty { display: none; }
 .revbub.drag { transform: scale(1.1); cursor: grabbing; }
 .rcard { border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 14px; padding: 12px; margin-bottom: 12px; display: grid; gap: 8px; background: var(--surface); }
+.revnav { display: grid; align-items: center; gap: 8px; margin-bottom: 10px; text-align: center; color: var(--muted); font-weight: 600; }
 .rcard.ok { border-left-color: var(--line); }
 .rcard .rhead { display: flex; align-items: center; gap: 8px; }
 .rcard .rhead b { font: 700 1.3rem var(--display); }
@@ -335,8 +336,9 @@ input:disabled { opacity: .45; }
 
 <button class="revbub" id="revBub" type="button" aria-label="Paquetes: revisar, referencia y foto">📝<b id="revCnt"></b></button>
 <section id="p-review" class="sheet" hidden aria-label="Revisar paquetes">
- <div class="sheet-head"><h2>Paquetes</h2><button class="x" type="button" data-close aria-label="Cerrar">✕</button></div>
- <p class="note" id="revEmpty">Todavía no hay paquetes. Lo que escanees aparece acá.</p>
+ <div class="sheet-head"><h2>Revisar paquete</h2><button class="x" type="button" data-close aria-label="Cerrar">✕</button></div>
+ <p class="note" id="revEmpty">No hay nada para revisar. Lo que escanees aparece acá y, al tocar ✓ Listo, pasa a Paradas.</p>
+ <div class="revnav" id="revNav" hidden><span id="revPos"></span></div>
  <div id="revList"></div>
 </section>
 <div class="backdrop" id="backdrop" hidden></div>
@@ -756,7 +758,7 @@ input:disabled { opacity: .45; }
       pts.push([route.start.lat, route.start.lng]);
     }
     const lt = letters(), nx = nextStop();
-    orderedItems().forEach((it) => {
+    orderedItems().filter(it => !it.review).forEach((it) => {
       if (typeof it.lat !== "number") return;
       const stop = route ? route.order.indexOf(it.num) + 1 : 0;
       const m = L.marker([it.lat, it.lng], { icon: pinIcon(stop || it.num, it.done ? "done" : (stop ? (it === nx ? "next" : "") : "unordered"), it.extra), zIndexOffset: it === nx ? 1000 : 0 });
@@ -771,10 +773,10 @@ input:disabled { opacity: .45; }
   let pendingDelete = null, openRow = null;
   function render() {
     $("nextTag").textContent = code(nextNum());
-    $("countTab").textContent = items.filter(it => it.address).length || "";
+    $("countTab").textContent = items.filter(it => it.address && !it.review).length || "";
     const ol = $("stops"); ol.textContent = "";
-    // lo escaneado sin dirección todavía no es una parada: se completa en la burbuja 📝
-    const list = orderedItems().filter(it => it.address); const lt = letters();
+    // lo escaneado pasa a Paradas recién cuando se revisa en la burbuja 📝
+    const list = orderedItems().filter(it => it.address && !it.review); const lt = letters();
     if (!list.length) {
       const li = document.createElement("li"); li.className = "empty";
       li.textContent = "Todavía no hay paradas. Escanea una etiqueta y la primera quedará como A1.";
@@ -1238,7 +1240,7 @@ input:disabled { opacity: .45; }
   // a mano: crea un paquete vacío y abre su tarjeta en la burbuja 📝
   $("manualBtn").addEventListener("click", () => {
     const it = { num: nextNum(), address: "", createdAt: new Date().toISOString(), review: true };
-    items.push(it); save(); closeScanner(); showTab("p-review");
+    items.push(it); save(); closeScanner(); revCur = it.num; showTab("p-review");
     const c = revCards.get(it.num); if (c) { c.scrollIntoView({ block: "start" }); c.querySelector("textarea").focus(); }
   });
   
@@ -1298,7 +1300,7 @@ input:disabled { opacity: .45; }
       if (!st || (!st.moved && Math.hypot(e.clientX - st.x, e.clientY - st.y) < 8)) return;
       st.moved = true; bub.classList.add("drag"); st.last = place(e.clientX - st.ox, e.clientY - st.oy);
     });
-    bub.addEventListener("pointerup", () => { if (!st) return; if (st.moved) { bub.classList.remove("drag"); if (st.last) store.set("revBubPos", st.last); } else showTab("p-review"); st = null; });
+    bub.addEventListener("pointerup", () => { if (!st) return; if (st.moved) { bub.classList.remove("drag"); if (st.last) store.set("revBubPos", st.last); } else { revCur = null; showTab("p-review"); } st = null; });
     bub.addEventListener("pointercancel", () => { st = null; bub.classList.remove("drag"); });
   })();
 
@@ -1341,20 +1343,24 @@ input:disabled { opacity: .45; }
       await ph.save(it);
       delete it.review; delete it.alt; delete it.read;
       if (moved) { delete it.lat; delete it.lng; }
+      revCur = null;
       save(); refresh(false); toast("✓ " + code(it.num) + " guardada");
       if (moved || typeof it.lat !== "number") { try { const g = await geocode(na, $("keyInput").value.trim()); if (g) { it.lat = g.lat; it.lng = g.lng; save(); refresh(false); } else toast("No encontré " + code(it.num) + " en el mapa", true); } catch {} }
     });
     return c;
   }
   function renderReview() {
-    // arriba lo recién escaneado (para revisar); abajo el resto de las paradas sin entregar, en orden de ruta
-    const pos = (it) => route && route.order.includes(it.num) ? route.order.indexOf(it.num) : 1e6 + it.num;
-    const list = items.filter(it => it.review || !it.done).sort((a, b) => (b.review ? 1 : 0) - (a.review ? 1 : 0) || pos(a) - pos(b));
+    // solo lo escaneado sin revisar, de a uno; con «✓ Listo» pasa a Paradas
+    const list = items.filter(it => it.review).sort((a, b) => a.num - b.num);
     $("revCnt").textContent = items.filter(it => it.review).length || "";
     if ($("p-review").hidden) { revCards.clear(); $("revList").textContent = ""; return; }
+    revList = list;
+    let i = list.findIndex(it => it.num === revCur); if (i < 0) i = 0;
+    const cur = list[i];
+    $("revList").textContent = "";
     const keep = new Set(list.map(it => it.num));
     revCards.forEach((c, n) => { if (!keep.has(n)) { c.remove(); revCards.delete(n); } });
-    list.forEach(it => {
+    (cur ? [cur] : []).forEach(it => {
       let c = revCards.get(it.num);
       if (!c || c.classList.contains("ok") === !!it.review) { const n = reviewCard(it); if (c) c.replaceWith(n); c = n; revCards.set(it.num, c); }
       else if (it.address && !c.querySelector('[data-f="addr"]').value && document.activeElement !== c.querySelector('[data-f="addr"]')) {
@@ -1364,7 +1370,10 @@ input:disabled { opacity: .45; }
       $("revList").append(c);
     });
     $("revEmpty").hidden = list.length > 0;
+    revCur = cur ? cur.num : null;
+    $("revNav").hidden = list.length < 2; $("revPos").textContent = "Quedan " + list.length + " para revisar";
   }
+  let revCur = null, revList = [];
 
   function toast(m, bad) {
     if ($("scanner").hidden) { const mt = $("mapToast"); mt.textContent = m; mt.style.color = bad ? "#ff8a80" : "#fff"; mt.hidden = false; clearTimeout(toast.m); toast.m = setTimeout(() => mt.hidden = true, 3000); return; }
@@ -1632,7 +1641,7 @@ input:disabled { opacity: .45; }
   async function optimize(fromHere) {
     const st = $("optStatus"); const say = (m, c) => { st.className = "status" + (c ? " " + c : ""); st.textContent = m; };
     const key = $("keyInput").value.trim();
-    const todo = items.filter(it => !it.done);
+    const todo = items.filter(it => !it.done && !it.review);
     if (!todo.length) { say("No hay paradas pendientes.", "err"); return; }
     const here = fromHere === true || $("hereChk").checked, startText = here ? "" : $("startInput").value.trim();
     $("optBtn").disabled = $("optHereBtn").disabled = true;
