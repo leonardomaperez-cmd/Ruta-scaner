@@ -135,7 +135,7 @@ body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--body); ov
 .btn:focus-visible, input:focus-visible, textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .row { display: flex; gap: 10px; flex-wrap: wrap; }
 .row > * { flex: 1 1 140px; }
-textarea, select, input[type=text], input[type=password], input[type=search] { width: 100%; font: 500 1rem/1.4 var(--body); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; min-width: 0; }
+textarea, select, input[type=text], input[type=password], input[type=search], input[type=tel] { width: 100%; font: 500 1rem/1.4 var(--body); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; min-width: 0; }
 textarea { resize: vertical; min-height: 70px; }
 .preview { display: grid; grid-template-columns: 84px 1fr; gap: 12px; align-items: start; }
 .preview img { width: 84px; height: 84px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
@@ -251,10 +251,6 @@ input:disabled { opacity: .45; }
   <button class="fab" type="button" data-p="p-stops" aria-label="Paradas">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4" cy="6" r="1.5"/><circle cx="4" cy="12" r="1.5"/><circle cx="4" cy="18" r="1.5"/></svg>
     <span class="cnt" id="countTab"></span><span class="fab-label">Paradas</span>
-  </button>
-  <button class="fab big" type="button" id="scanBtn" aria-label="Escanear dirección">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M7 10h10M7 14h7"/></svg>
-    <span class="fab-label">Escanear</span>
   </button>
   <button class="fab" type="button" data-p="p-set" aria-label="Ajustes">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
@@ -1213,7 +1209,9 @@ input:disabled { opacity: .45; }
     try { const tr = stream && stream.getVideoTracks()[0]; if (!tr) return; torchOn = !torchOn; await tr.applyConstraints({ advanced: [{ torch: torchOn }] }); $("torchBtn").classList.toggle("on", torchOn); } catch { torchOn = false; $("torchBtn").classList.remove("on"); }
   });
   function stopCam() { torchOn = false; $("torchBtn").classList.remove("on"); if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } $("cam").srcObject = null; }
-  function closeScanner() { stopCam(); $("scanner").hidden = true; refresh(true); }
+  // el escáner se abre desde la burbuja 📝; al cerrarlo se vuelve a ella
+  let scanInto = null;
+  function closeScanner() { stopCam(); $("scanner").hidden = true; refresh(true); if (scanInto) { scanInto = null; showTab("p-review"); } }
   function resumeScan() { $("stage").hidden = true; $("frozen").hidden = true; $("scanControls").hidden = false; if (!stream) openScanner(); }
   // Recorta de la imagen de la cámara solo lo que se ve dentro del recuadro (con un margen).
   function grabFrame() {
@@ -1229,7 +1227,6 @@ input:disabled { opacity: .45; }
     c.getContext("2d").drawImage(v, x, y, w, h, 0, 0, c.width, c.height);
     return c;
   }
-  $("scanBtn").addEventListener("click", () => showTab("p-scan"));
   $("closeScan").addEventListener("click", closeScanner);
   $("retakeBtn").addEventListener("click", resumeScan);
   $("shutter").addEventListener("click", () => {
@@ -1281,6 +1278,14 @@ input:disabled { opacity: .45; }
       const known = items.find(it => it.qr === qr);
       if (known) { $("stage").hidden = false; $("previewBox").hidden = true; $("lines").hidden = true; $("scanControls").hidden = true; showVerify(known); return; }
     }
+    if (scanInto) {
+      // abierto desde la burbuja: lo leído completa el formulario
+      reading++; scanBusy();
+      let r = null; try { r = await readLabel(file); } catch (e) { console.warn(e); } finally { reading--; scanBusy(); }
+      if (!r || !r.address) { toast("No leí la dirección. Probá de nuevo con la etiqueta más cerca.", true); return; }
+      const fill = scanInto; closeScanner(); fill(r); toast("✓ Leída: " + r.address + ". Revisala y tocá Guardar.");
+      return;
+    }
     // el número se reserva ya, así dos etiquetas seguidas no se pisan
     const it = { num: nextNum(), address: "", createdAt: new Date().toISOString() }; if (qr) it.qr = qr;
     items.push(it); save();
@@ -1317,7 +1322,7 @@ input:disabled { opacity: .45; }
     const c = document.createElement("div"); c.className = "rcard";
     const stop = route ? route.order.indexOf(it.num) + 1 : 0;
     c.innerHTML = `<div class="rhead"><b></b><span></span></div>
-      <label class="label">Dirección</label><textarea rows="2" data-f="addr"></textarea>
+      <label class="label">Dirección</label><div class="refrow"><textarea rows="2" data-f="addr"></textarea><button class="btn mic" type="button" data-f="scan" aria-label="Escanear la etiqueta"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M7 10h10M7 14h7"/></svg></button></div>
       <button class="mini" type="button" data-f="alt" hidden style="text-align:left"></button>
       <div class="checkmap" data-f="cmap" hidden></div><span class="note" data-f="cinfo" hidden></span>
       <label class="label">Referencia (opcional)</label><div class="refrow"><input type="text" data-f="ref" placeholder="Ej.: portón negro, timbre 2"><button class="btn mic" type="button" data-f="mic" aria-label="Dictar la referencia">🎤</button></div>
@@ -1332,6 +1337,10 @@ input:disabled { opacity: .45; }
     if (isNew) { f("del").textContent = "Limpiar"; f("ok").textContent = "Guardar"; }
     f("addr").value = it.address; f("ref").value = it.ref || ""; f("tel").value = it.tel || "";
     const pv = addrPreview(f("addr"), f("cmap"), f("cinfo"));
+    f("scan").addEventListener("click", () => {
+      scanInto = (r) => { f("addr").value = r.address; if (r.ref && !f("ref").value) f("ref").value = r.ref; pv.now(); };
+      showTab("p-scan");
+    });
     suggestFor(f("addr"), () => pv.now());
     if (it.alt) { f("alt").hidden = false; f("alt").textContent = "El lector del teléfono leyó otra cosa: usar «" + it.alt + "»"; f("alt").addEventListener("click", () => { f("addr").value = it.alt; f("alt").hidden = true; }); }
     const note = (m) => { f("note").textContent = m || ""; };
