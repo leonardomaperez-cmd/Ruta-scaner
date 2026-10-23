@@ -196,6 +196,18 @@ input:disabled { opacity: .45; }
 .xpick { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
 .xpick button { min-width: 44px; height: 36px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: 700 .95rem var(--display); cursor: pointer; }
 .xpick button.on { background: #f59e0b; border-color: #f59e0b; color: #1f1300; }
+.hpin { display: block; overflow: visible; filter: drop-shadow(0 2px 3px rgba(15,23,42,.45)); }
+.hpin path { fill: #006948; stroke: #fff; stroke-width: 2; stroke-linejoin: round; }
+.hpin text { fill: #fff; font-family: "Space Grotesk", system-ui, sans-serif; font-weight: 700; letter-spacing: -.02em; }
+.hpin.next path { fill: #85f8c4; } .hpin.next text { fill: #002114; }
+.hpin.next { filter: drop-shadow(0 0 6px rgba(133,248,196,.9)) drop-shadow(0 2px 3px rgba(15,23,42,.45)); }
+.hpin.done path { fill: #94a3b8; } .hpin.done { opacity: .75; }
+.hpin.unordered path { fill: #fff; stroke: #006948; } .hpin.unordered text { fill: #006948; }
+.hpin + .pinx { top: -9px; right: -12px; }
+/* luz que recorre la línea de la ruta */
+.flow { stroke-dasharray: 16 110; animation: flow 2.4s linear infinite; filter: drop-shadow(0 0 3px #fff) drop-shadow(0 0 7px #85f8c4); }
+@keyframes flow { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -126; } }
+@media (prefers-reduced-motion: reduce) { .flow { animation: none; display: none; } }
 .pin span { transform: rotate(45deg); font: 700 12px "Space Grotesk", system-ui, sans-serif; color: #fff; letter-spacing: -.02em; }
 .pin.start { background: #0f172a; } .pin.start span { color: #fff; font-size: 15px; }
 .pin.next { background: linear-gradient(135deg, #85f8c4, #4edea3); width: 38px; height: 38px; box-shadow: 0 0 0 6px rgba(133,248,196,.3), 0 3px 10px rgba(15,23,42,.5); }
@@ -536,7 +548,14 @@ input:disabled { opacity: .45; }
   if (NATIVE && store.get("permsDone", false)) startMe(false); // en la app de Android se sigue la ubicación desde que se abre (la primera vez, después de pedir los permisos)
   else try { navigator.permissions && navigator.permissions.query({ name: "geolocation" }).then(st => { if (st.state === "granted") startMe(false); }).catch(() => {}); } catch {}
   const layer = L.layerGroup().addTo(map);
-  const pinIcon = (text, cls, extra) => { const z = cls === "next" ? 38 : 32; return L.divIcon({ className: "", html: `<div class="pinw"><div class="pin ${cls || ""}"><span>${text}</span></div>${extra ? `<i class="pinx">+${extra}</i>` : ""}</div>`, iconSize: [z, z], iconAnchor: [z / 2, z], popupAnchor: [0, -z + 2] }); };
+  // Pin de parada: casita minimalista con el número; la base marca el punto exacto.
+  const pinIcon = (text, cls, extra) => {
+    const x = extra ? `<i class="pinx">+${extra}</i>` : "";
+    if (cls === "start") { const z = 32; return L.divIcon({ className: "", html: `<div class="pinw"><div class="pin start"><span>${text}</span></div>${x}</div>`, iconSize: [z, z], iconAnchor: [z / 2, z], popupAnchor: [0, -z + 2] }); }
+    const w = cls === "next" ? 38 : 32, h = Math.round(w * 32 / 30), fs = String(text).length > 2 ? 10 : 13;
+    return L.divIcon({ className: "", html: `<div class="pinw"><svg class="hpin ${cls || ""}" viewBox="0 0 30 32" width="${w}" height="${h}"><path d="M15 1.5 28.5 12v17.5a2 2 0 0 1-2 2h-23a2 2 0 0 1-2-2V12z"/><text x="15" y="26.5" text-anchor="middle" font-size="${fs}">${text}</text></svg>${x}</div>`,
+      iconSize: [w, h], iconAnchor: [w / 2, h], popupAnchor: [0, -h + 2] });
+  };
   const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const gmaps = (it) => "https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=" +
     encodeURIComponent(typeof it.lat === "number" ? it.lat + "," + it.lng : it.address);
@@ -663,6 +682,7 @@ input:disabled { opacity: .45; }
     if (path.length > 1) {
       L.polyline(path, { color: "#ffffff", weight: street ? 6 : 4, opacity: .95, lineCap: "round", lineJoin: "round" }).addTo(layer);
       L.polyline(path, { color: route ? "#00a572" : "#64748b", weight: street ? 3.5 : 2, opacity: 1, lineCap: "round", lineJoin: "round", dashArray: street ? null : "6 8" }).addTo(layer);
+      if (route) L.polyline(path, { color: "#eafff5", weight: street ? 5 : 4, opacity: 1, lineCap: "round", className: "flow", interactive: false }).addTo(layer);
     }
     if (route && route.start) {
       L.marker([route.start.lat, route.start.lng], { icon: pinIcon("⌂", "start") }).bindPopup("<b>Salida</b>").addTo(layer);
@@ -672,7 +692,7 @@ input:disabled { opacity: .45; }
     orderedItems().forEach((it) => {
       if (typeof it.lat !== "number") return;
       const stop = route ? route.order.indexOf(it.num) + 1 : 0;
-      const m = L.marker([it.lat, it.lng], { icon: pinIcon(stop ? stop + (lt.get(it.num) || "") : it.num, it.done ? "done" : (stop ? (it === nx ? "next" : "") : "unordered"), it.extra), zIndexOffset: it === nx ? 1000 : 0 });
+      const m = L.marker([it.lat, it.lng], { icon: pinIcon(stop || it.num, it.done ? "done" : (stop ? (it === nx ? "next" : "") : "unordered"), it.extra), zIndexOffset: it === nx ? 1000 : 0 });
       m.bindPopup(() => stopPopup(it, stop, lt.get(it.num)), { minWidth: 220, maxWidth: 290 });
       m.addTo(layer);
       pts.push([it.lat, it.lng]);
