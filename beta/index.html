@@ -1276,9 +1276,10 @@ input:disabled { opacity: .45; }
         say("Calculando la mejor ruta…");
         let res, note = "";
         const few = located.slice(0, 99);
-        try { res = await routeValhalla(start, few, back); }
+        // OSRM primero; si falla, Valhalla; si los dos fallan, orden aproximado en el teléfono
+        try { res = await routeOSRM(start, few, back); }
         catch (e1) {
-          try { res = await routeOSRM(start, few, back); }
+          try { res = await routeValhalla(start, few, back); }
           catch (e2) { res = await routeLocal(start, few, back); note = " (orden aproximado: " + (e1.message || e1) + " / " + (e2.message || e2) + ")"; }
         }
         if (!res.line || res.line.length < 2) {
@@ -1334,7 +1335,7 @@ input:disabled { opacity: .45; }
   // Después de guardar, la cámara queda lista para la siguiente etiqueta.
   $("saveBtn").addEventListener("click", () => { if ($("stage").hidden) resumeScan(); });
 
-  // Ruta sin clave, opción 1: optimizador público de Valhalla (FOSSGIS). Fija la primera y la última
+  // Ruta sin clave, respaldo: optimizador público de Valhalla (FOSSGIS). Fija la primera y la última
   // parada; se manda ida y vuelta a la salida y, si no hay regreso, se descarta el último tramo.
   function decodePolyline6(str) {
     const out = []; let i = 0, lat = 0, lng = 0;
@@ -1364,7 +1365,7 @@ input:disabled { opacity: .45; }
     return { order, line, m, s };
   }
 
-  // Ruta sin clave, opción 2: servidor público de OSRM (OpenStreetMap). Calcula ida y vuelta desde la salida;
+  // Ruta sin clave, primera opción: servidor público de OSRM (OpenStreetMap). Calcula ida y vuelta desde la salida;
   // si no hay regreso, se descarta el último tramo.
   async function routeOSRM(start, stops, back) {
     const pts = [start, ...stops];
