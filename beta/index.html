@@ -679,7 +679,16 @@ input:disabled { opacity: .45; }
     if (path.length > 1) {
       L.polyline(path, { color: "#ffffff", weight: street ? 6 : 4, opacity: .95, lineCap: "round", lineJoin: "round" }).addTo(layer);
       L.polyline(path, { color: route ? "#00a572" : "#64748b", weight: street ? 3.5 : 2, opacity: 1, lineCap: "round", lineJoin: "round", dashArray: street ? null : "6 8" }).addTo(layer);
-      if (route) L.polyline(path, { color: "#eafff5", weight: street ? 5 : 4, opacity: 1, lineCap: "round", className: "flow", interactive: false }).addTo(layer);
+      // la luz recorre solo el tramo hasta la próxima parada (desde la anterior o desde la salida)
+      const nxt = route && nextStop();
+      if (nxt) {
+        const ord = route.order.map(byNum).filter(it => it && typeof it.lat === "number"), k = ord.indexOf(nxt);
+        const prev = k > 0 ? ord[k - 1] : route.start;
+        const near = (p, from) => { let bi = from, bd = Infinity; for (let i = from; i < path.length; i++) { const d = (path[i][0] - p.lat) ** 2 + (path[i][1] - p.lng) ** 2; if (d < bd) { bd = d; bi = i; } } return bi; };
+        const i0 = prev ? near(prev, 0) : 0, i1 = near(nxt, i0);
+        const leg = path.slice(i0, i1 + 1);
+        if (leg.length > 1) L.polyline(leg, { color: "#eafff5", weight: street ? 5 : 4, opacity: 1, lineCap: "round", className: "flow", interactive: false }).addTo(layer);
+      }
     }
     if (route && route.start) {
       L.marker([route.start.lat, route.start.lng], { icon: pinIcon("⌂", "start") }).bindPopup("<b>Salida</b>").addTo(layer);
