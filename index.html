@@ -383,6 +383,8 @@ input:disabled { opacity: .45; }
   if (NATIVE) document.documentElement.style.setProperty("--top", "max(env(safe-area-inset-top, 0px), 30px)");
   const plug = (n) => NATIVE ? (window.CapPlugins && window.CapPlugins[n]) || (window.Capacitor.Plugins && window.Capacitor.Plugins[n]) || null : null;
   const pad = (n) => String(n).padStart(4, "0");
+  // Código del paquete: tandas de 10 con letra (A1…A10, B1…B10, …, Z10, después AA1…).
+  const code = (n) => { let i = Math.floor((n - 1) / 10), l = ""; do { l = String.fromCharCode(65 + i % 26) + l; i = Math.floor(i / 26) - 1; } while (i >= 0); return l + ((n - 1) % 10 + 1); };
   const store = {
     get(k, d) { try { const v = localStorage.getItem(KEY + ":" + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
     set(k, v) { try { localStorage.setItem(KEY + ":" + k, JSON.stringify(v)); } catch {} },
@@ -592,12 +594,12 @@ input:disabled { opacity: .45; }
   function arriveText(it) {
     const stop = route ? route.order.indexOf(it.num) + 1 : 0, l = letters().get(it.num);
     return "Llegando a " + (stop ? "la parada " + stop + (l ? ", letra " + l.split("").join(" ") : "") + ". " : "la parada. ") +
-      "Paquete número " + it.num + ". " + (it.extra ? "Ojo, lleva " + (it.extra + 1) + " paquetes. " : "") + (it.ref ? "Referencia: " + it.ref + "." : "Sin referencia.");
+      "Paquete " + code(it.num).replace(/(\D+)(\d+)/, "$1 $2") + ". " + (it.extra ? "Ojo, lleva " + (it.extra + 1) + " paquetes. " : "") + (it.ref ? "Referencia: " + it.ref + "." : "Sin referencia.");
   }
   function showArrival(it) {
     arriveItem = it;
     const stop = route ? route.order.indexOf(it.num) + 1 : 0, l = letters().get(it.num);
-    $("arriveCode").textContent = (stop ? "Parada " + stop + (l ? " · " + l : "") + " · " : "") + "Nº " + pad(it.num);
+    $("arriveCode").textContent = (stop ? "Parada " + stop + (l ? " · " + l : "") + " · " : "") + code(it.num);
     $("arriveAddr").textContent = it.address;
     $("arriveRef").textContent = it.ref ? "🗒 " + it.ref : "Sin referencia";
     $("arrive").hidden = false;
@@ -616,7 +618,7 @@ input:disabled { opacity: .45; }
   $("arriveClose").addEventListener("click", () => { $("arrive").hidden = true; stopSpeak(); });
   $("arriveDone").addEventListener("click", () => {
     $("arrive").hidden = true; stopSpeak();
-    if (arriveItem) { arriveItem.done = true; save(); refresh(false); toast("Nº " + pad(arriveItem.num) + " entregada"); arriveItem = null; }
+    if (arriveItem) { arriveItem.done = true; save(); refresh(false); toast(code(arriveItem.num) + " entregada"); arriveItem = null; }
     if (meLast) checkArrival({ lat: meLast[0], lng: meLast[1] });
   });
 
@@ -626,7 +628,7 @@ input:disabled { opacity: .45; }
     // los botones cambian el contenido; sin esto el mapa toma el toque como fuera de la ventana y la cierra
     d.addEventListener("click", (e) => e.stopPropagation());
     const view = () => {
-      d.innerHTML = `<b>${stop ? "Parada " + stop + (letter ? " · Letra " + letter : "") + "<br>" : "Sin ordenar<br>"}Nº ${pad(it.num)}</b>
+      d.innerHTML = `<b>${stop ? "Parada " + stop + (letter ? " · Letra " + letter : "") + "<br>" : "Sin ordenar<br>"}${code(it.num)}</b>
         <div>${esc(it.address)}</div>
         ${it.extra ? `<div><span class="xtra" style="margin:0">+${it.extra}</span> ${it.extra === 1 ? "1 paquete más" : it.extra + " paquetes más"} en esta dirección</div>` : ""}
         ${it.ref ? `<div class="pref">🗒 ${esc(it.ref)}</div>` : `<div class="muted">Sin referencia</div>`}
@@ -639,7 +641,7 @@ input:disabled { opacity: .45; }
       d.querySelector('[data-a="done"]').addEventListener("click", () => { it.done = !it.done; save(); map.closePopup(); refresh(false); });
       d.querySelector('[data-a="del"]').addEventListener("click", (e) => {
         const b = e.currentTarget;
-        if (b.dataset.sure) { map.closePopup(); removeItem(it); toast("Nº " + pad(it.num) + " eliminada"); return; }
+        if (b.dataset.sure) { map.closePopup(); removeItem(it); toast(code(it.num) + " eliminada"); return; }
         b.dataset.sure = "1"; b.textContent = "¿Seguro? Toca de nuevo"; b.classList.add("confirm");
       });
     };
@@ -681,13 +683,13 @@ input:disabled { opacity: .45; }
   // ---------- lista ----------
   let pendingDelete = null, openRow = null;
   function render() {
-    $("nextTag").textContent = pad(nextNum());
+    $("nextTag").textContent = code(nextNum());
     $("countTab").textContent = items.length ? String(items.length) : "";
     const ol = $("stops"); ol.textContent = "";
     const list = orderedItems(); const lt = letters();
     if (!list.length) {
       const li = document.createElement("li"); li.className = "empty";
-      li.textContent = "Todavía no hay paradas. Escanea una etiqueta y la primera quedará como Nº 0001.";
+      li.textContent = "Todavía no hay paradas. Escanea una etiqueta y la primera quedará como A1.";
       ol.append(li);
     }
     // fila minimalista: parada+letra, dirección y tilde de entregada; al tocarla se abren las demás acciones
@@ -708,7 +710,7 @@ input:disabled { opacity: .45; }
       const t = document.createElement("b"); t.textContent = it.address;
       if (it.extra) { const x = document.createElement("span"); x.className = "xtra"; x.textContent = "+" + it.extra; x.title = it.extra + " paquete(s) más en esta dirección"; t.prepend(x); x.style.marginLeft = "0"; x.style.marginRight = "6px"; }
       const meta = document.createElement("small");
-      meta.textContent = (stop && l ? l + it.num : "Nº " + pad(it.num)) + (typeof it.lat === "number" ? "" : " · sin ubicar") + (it.ref ? " · " + it.ref : "");
+      meta.textContent = code(it.num) + (typeof it.lat === "number" ? "" : " · sin ubicar") + (it.ref ? " · " + it.ref : "");
       a.append(t, meta);
       const chk = document.createElement("button"); chk.type = "button"; chk.className = "dchk";
       chk.setAttribute("aria-label", it.done ? "Marcar como no entregada" : "Marcar como entregada"); chk.innerHTML = svg("ok");
@@ -960,8 +962,8 @@ input:disabled { opacity: .45; }
     const stop = route ? route.order.indexOf(it.num) + 1 : 0;
     const l = letters().get(it.num);
     $("stage").classList.add("is-verify"); $("verifyBox").hidden = false;
-    $("verifyCode").textContent = stop ? stop + " · " + l : "Nº " + pad(it.num);
-    $("verifyInfo").textContent = (stop ? "Parada " + stop + ", letra " + l + " · Nº " + pad(it.num) : "Ya guardado. Optimiza la ruta para ver su parada y letra.") + " · " + it.address;
+    $("verifyCode").textContent = stop ? stop + " · " + l : code(it.num);
+    $("verifyInfo").textContent = (stop ? "Parada " + stop + ", letra " + l + " · " + code(it.num) : "Ya guardado. Optimiza la ruta para ver su parada y letra.") + " · " + it.address;
   }
   let pendingQR = "", readToken = 0;
   // Cuando el lector del teléfono termina, avisa si coincide con Gemini o muestra lo que leyó para elegir.
@@ -1129,7 +1131,7 @@ input:disabled { opacity: .45; }
     if (pendingQR) { it.qr = pendingQR; pendingQR = ""; }
     items.push(it); save();
     $("stage").hidden = true; $("addrInput").value = ""; $("refInput").value = ""; setExtra($("newExtra"), 0);
-    toast("Guardada como Nº " + pad(it.num));
+    toast("Guardada como " + code(it.num));
     refresh(false);
     if (pre) { refresh(true); return; }
     try { const g = await geocode(it.address, $("keyInput").value.trim()); if (g) { it.lat = g.lat; it.lng = g.lng; save(); refresh(true); } } catch {}
@@ -1294,12 +1296,12 @@ input:disabled { opacity: .45; }
         cur.address = na; if (nr) cur.ref = nr; else delete cur.ref;
         if ($("editExtra").value) cur.extra = $("editExtra").value; else delete cur.extra;
         if (moved) { delete cur.lat; delete cur.lng; }
-        save(); el.hidden = true; refresh(false); toast("Nº " + pad(cur.num) + " actualizada");
+        save(); el.hidden = true; refresh(false); toast(code(cur.num) + " actualizada");
         if (moved) { try { const g = await geocode(na, $("keyInput").value.trim()); if (g) { cur.lat = g.lat; cur.lng = g.lng; save(); refresh(false); } else toast("No encontré la nueva dirección en el mapa", true); } catch {} }
       });
     }
     el._it = it;
-    $("editTitle").textContent = "Editar Nº " + pad(it.num);
+    $("editTitle").textContent = "Editar " + code(it.num);
     $("editAddr").value = it.address; $("editRef").value = it.ref || ""; $("editNote").textContent = ""; setExtra($("editExtra"), it.extra || 0);
     el.hidden = false; setTimeout(() => $("editAddr").focus(), 50);
   }
@@ -1381,7 +1383,7 @@ input:disabled { opacity: .45; }
         route = { order: res.order, line: res.line, start: startText || gotHere ? start : null,
           summary: (res.m / 1000).toFixed(1) + " km · " + (min >= 60 ? Math.floor(min / 60) + " h " + (min % 60) + " min" : min + " min") + (back ? " ida y vuelta" : "") };
         save(); refresh(true);
-        const warn = far.length ? "Nº " + far.map(pad).join(", ") + " quedó lejos del resto y no se incluyó; revisa la dirección (agrega ciudad) o pon el país en Ajustes. "
+        const warn = far.length ? far.map(code).join(", ") + " quedó lejos del resto y no se incluyó; revisa la dirección (agrega ciudad) o pon el país en Ajustes. "
           : (missing ? missing + " dirección(es) no se encontraron en el mapa y quedaron sin ordenar. " : "");
         say(warn + (located.length > 99 ? "Se ordenaron las primeras 99 paradas." : "Ruta optimizada.") + note, warn || note ? "err" : "ok");
         return;
@@ -1651,8 +1653,8 @@ input:disabled { opacity: .45; }
   $("exportBtn").addEventListener("click", () => {
     const q = (s) => '"' + String(s).replace(/"/g, '""') + '"';
     const lt = letters();
-    const rows = orderedItems().map(it => [route ? (route.order.indexOf(it.num) + 1 || "") : "", lt.get(it.num) || "", pad(it.num), q(it.address), q(it.ref || ""), it.extra || 0, it.lat ?? "", it.lng ?? "", it.done ? "si" : "no"].join(","));
-    const csv = "﻿parada,letra,numero,direccion,referencia,paquetes_extra,lat,lng,entregada\n" + rows.join("\n") + "\n";
+    const rows = orderedItems().map(it => [route ? (route.order.indexOf(it.num) + 1 || "") : "", lt.get(it.num) || "", pad(it.num), code(it.num), q(it.address), q(it.ref || ""), it.extra || 0, it.lat ?? "", it.lng ?? "", it.done ? "si" : "no"].join(","));
+    const csv = "﻿parada,letra,numero,codigo,direccion,referencia,paquetes_extra,lat,lng,entregada\n" + rows.join("\n") + "\n";
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
     a.download = "paradas.csv"; document.body.append(a); a.click(); a.remove();
   });
