@@ -1306,6 +1306,7 @@ input:disabled { opacity: .45; }
     c.innerHTML = `<div class="rhead"><b></b><span></span></div>
       <label class="label">Dirección</label><textarea rows="2" data-f="addr"></textarea>
       <button class="mini" type="button" data-f="alt" hidden style="text-align:left"></button>
+      <div class="checkmap" data-f="cmap" hidden></div><span class="note" data-f="cinfo" hidden></span>
       <label class="label">Referencia (opcional)</label><div class="refrow"><input type="text" data-f="ref" placeholder="Ej.: portón negro, timbre 2"><button class="btn mic" type="button" data-f="mic" aria-label="Dictar la referencia">🎤</button></div>
       <span class="note" data-f="note"></span>
       <label class="label">¿Más paquetes en esta dirección?</label><div class="xpick" data-f="extra"></div>
@@ -1316,7 +1317,8 @@ input:disabled { opacity: .45; }
     c.querySelector(".rhead span").textContent = isNew ? "código del próximo paquete" : (stop ? "Parada " + stop : "");
     if (isNew) { f("del").textContent = "Limpiar"; f("ok").textContent = "Guardar"; }
     f("addr").value = it.address; f("ref").value = it.ref || "";
-    suggestFor(f("addr"));
+    const pv = addrPreview(f("addr"), f("cmap"), f("cinfo"));
+    suggestFor(f("addr"), () => pv.now());
     if (it.alt) { f("alt").hidden = false; f("alt").textContent = "El lector del teléfono leyó otra cosa: usar «" + it.alt + "»"; f("alt").addEventListener("click", () => { f("addr").value = it.alt; f("alt").hidden = true; }); }
     const note = (m) => { f("note").textContent = m || ""; };
     if (!SR) f("mic").hidden = true; else f("mic").addEventListener("click", () => dictate(f("ref"), f("mic"), note, true));
@@ -1339,9 +1341,10 @@ input:disabled { opacity: .45; }
       if (f("extra").value) it.extra = f("extra").value; else delete it.extra;
       await ph.save(it);
       delete it.review; delete it.alt; delete it.read;
-      if (moved) { delete it.lat; delete it.lng; }
+      const g = pv.geo(na);
+      if (g) { it.lat = g.lat; it.lng = g.lng; } else if (moved) { delete it.lat; delete it.lng; }
       save(); refresh(false); toast("✓ " + code(it.num) + " guardada en Paradas");
-      if (moved || typeof it.lat !== "number") { try { const g = await geocode(na, $("keyInput").value.trim()); if (g) { it.lat = g.lat; it.lng = g.lng; save(); refresh(false); } else toast("No encontré " + code(it.num) + " en el mapa", true); } catch {} }
+      if (typeof it.lat !== "number") { try { const g = await geocode(na, $("keyInput").value.trim()); if (g) { it.lat = g.lat; it.lng = g.lng; save(); refresh(false); } else toast("No encontré " + code(it.num) + " en el mapa", true); } catch {} }
     });
     return c;
   }
@@ -1490,6 +1493,33 @@ input:disabled { opacity: .45; }
     info.textContent = (g.label ? "En el mapa: " + g.label + ". " : "") + "Si el pin no está en el lugar correcto, arrástralo o corrige la dirección.";
   }
   $("addrInput").addEventListener("input", schedulePreview);
+  // el mismo mapita, para el formulario de la burbuja 📝 (uno por formulario)
+  function addrPreview(input, box, info) {
+    let mp = null, pin = null, t = 0, seq = 0, geo = null;
+    const hide = () => { clearTimeout(t); seq++; geo = null; box.hidden = true; info.hidden = true; };
+    async function look(text) {
+      const my = ++seq; info.hidden = false; info.style.color = ""; info.textContent = "Buscando la dirección en el mapa…";
+      let g = null;
+      try { g = await geocode(text, $("keyInput").value.trim()); } catch (e) { if (my === seq) info.textContent = "No se pudo buscar en el mapa (" + (e.message || e) + ")."; return; }
+      if (my !== seq) return;
+      if (!g) { geo = null; box.hidden = true; info.style.color = "var(--bad)"; info.textContent = "No encontré esta dirección en el mapa. Revisa calle, número y localidad."; return; }
+      geo = { text, lat: g.lat, lng: g.lng };
+      box.hidden = false;
+      if (!mp) {
+        mp = L.map(box, { zoomControl: false, attributionControl: false });
+        L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(mp);
+        pin = L.marker([g.lat, g.lng], { draggable: true, icon: pinIcon(nextNum(), "") }).addTo(mp);
+        pin.on("dragend", () => { const ll = pin.getLatLng(); if (geo) { geo.lat = ll.lat; geo.lng = ll.lng; } info.textContent = "Ubicación corregida a mano."; });
+      }
+      mp.invalidateSize(); pin.setIcon(pinIcon(nextNum(), "")); pin.setLatLng([g.lat, g.lng]); mp.setView([g.lat, g.lng], 16);
+      info.textContent = (g.label ? "En el mapa: " + g.label + ". " : "") + "Si el pin no está en el lugar correcto, arrástralo o corrige la dirección.";
+    }
+    const clean = () => input.value.replace(/\s+/g, " ").trim();
+    const later = (ms) => { clearTimeout(t); const text = clean(); if (text.length < 5) { hide(); return; } if (geo && geo.text === text) return; t = setTimeout(() => look(text), ms); };
+    input.addEventListener("input", () => later(900));
+    if (clean().length >= 5) later(0);
+    return { now: () => later(0), geo: (text) => geo && geo.text === text ? geo : null };
+  }
 
   // ---------- sugerencias al escribir una dirección (Photon, de OpenStreetMap, gratis y sin clave) ----------
   const picked = new Map(); // dirección elegida de la lista → su ubicación, para no volver a buscarla
