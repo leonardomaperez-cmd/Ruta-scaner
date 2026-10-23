@@ -702,13 +702,13 @@ input:disabled { opacity: .45; }
     list.forEach((it) => {
       const stop = route ? route.order.indexOf(it.num) + 1 : 0, l = lt.get(it.num) || "";
       const li = document.createElement("li"); li.className = (it.done ? "done" : "") + (openRow === it.num ? " open" : "");
-      const b = document.createElement("span"); b.className = "sbadge" + (stop ? "" : " none"); b.textContent = stop ? stop + l : "–";
+      const b = document.createElement("span"); b.className = "sbadge" + (stop ? "" : " none"); b.textContent = stop ? String(stop) : "–";
       b.title = stop ? "Parada " + stop + (l ? ", letra " + l : "") : "Sin ordenar";
       const a = document.createElement("div"); a.className = "addr";
       const t = document.createElement("b"); t.textContent = it.address;
       if (it.extra) { const x = document.createElement("span"); x.className = "xtra"; x.textContent = "+" + it.extra; x.title = it.extra + " paquete(s) más en esta dirección"; t.prepend(x); x.style.marginLeft = "0"; x.style.marginRight = "6px"; }
       const meta = document.createElement("small");
-      meta.textContent = "Nº " + pad(it.num) + (typeof it.lat === "number" ? "" : " · sin ubicar") + (it.ref ? " · " + it.ref : "");
+      meta.textContent = "Nº " + pad(it.num) + (stop && l ? " · Letra " + l : "") + (typeof it.lat === "number" ? "" : " · sin ubicar") + (it.ref ? " · " + it.ref : "");
       a.append(t, meta);
       const chk = document.createElement("button"); chk.type = "button"; chk.className = "dchk";
       chk.setAttribute("aria-label", it.done ? "Marcar como no entregada" : "Marcar como entregada"); chk.innerHTML = svg("ok");
