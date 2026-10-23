@@ -333,14 +333,23 @@ input:disabled { opacity: .45; }
       <label class="label" for="keyInput">Clave de TomTom (opcional)</label>
       <input id="keyInput" type="password" autocomplete="off" placeholder="Pega tu clave (API key)">
       <span class="note">Sin clave, la app usa mapas gratuitos de OpenStreetMap para ubicar y ordenar las paradas, sin cuenta. Con una clave de TomTom (gratis en developer.tomtom.com) la ruta tiene en cuenta el tráfico. Se guarda solo en este teléfono.</span>
+      <label class="label" for="aiSel">Inteligencia artificial que lee la etiqueta</label>
+      <select id="aiSel"><option value="llama">Llama de Meta (por Groq)</option><option value="gemini">Gemini de Google</option></select>
+      <div id="llamaBox">
+      <label class="label" for="groqInput">Clave de Groq (para Llama)</label>
+      <input id="groqInput" type="password" autocomplete="off" placeholder="Pega tu clave de console.groq.com">
+      <span class="note">Gratis y sin tarjeta en console.groq.com (API Keys). Con ella, la foto la lee Llama 4 de Meta. Se guarda solo en este teléfono.</span>
+      </div>
+      <div id="geminiBox">
       <label class="label" for="geminiInput">Clave de Gemini (lectura con inteligencia artificial)</label>
       <input id="geminiInput" type="password" autocomplete="off" placeholder="Pega tu clave de Google AI Studio">
       <span class="note">Opcional y gratis en aistudio.google.com. Con ella, la foto la lee Gemini y saca solo la dirección del destinatario. Sin ella, se lee en el teléfono. En el plan gratuito Google puede usar las fotos para mejorar sus productos.</span>
+      </div>
       <label class="label" for="startInput">Punto de partida</label>
       <input id="startInput" type="text" placeholder="Vacío = desde donde estés al optimizar">
       <label class="check"><input id="hereChk" type="checkbox"> Salir desde mi ubicación actual</label>
       <label class="check"><input id="returnChk" type="checkbox"> Volver al punto de partida al final</label>
-      <label class="check" id="geminiAlwaysBox" hidden><input id="geminiAlwaysChk" type="checkbox"> Leer siempre con Gemini (si no, lee primero ML Kit en el teléfono y Gemini solo cuando no cierra)</label>
+      <label class="check" id="geminiAlwaysBox" hidden><input id="geminiAlwaysChk" type="checkbox"> Leer siempre con la IA (si no, lee primero ML Kit en el teléfono y la IA solo cuando no cierra)</label>
       <label class="check"><input id="zaChk" type="checkbox"> Letras de la Z a la A (la primera parada lleva la última letra)</label>
       <label class="check"><input id="arriveChk" type="checkbox"> Avisarme con voz al llegar a la próxima parada</label>
       <label class="label" for="arriveDist">Distancia del aviso (metros)</label>
@@ -967,6 +976,27 @@ input:disabled { opacity: .45; }
     return "\nAntes te equivocaste así y el usuario lo corrigió. Aprende de esto (formato y errores típicos):\n" +
       list.map(f => "- Leíste: «" + f.leido + "» → Correcto: «" + f.corregido + "»").join("\n");
   }
+  // Llama 4 de Meta por Groq (API compatible con OpenAI): mismo pedido y misma respuesta en JSON que Gemini.
+  const LLAMA_MODELS = ["meta-llama/llama-4-scout-17b-16e-instruct", "meta-llama/llama-4-maverick-17b-128e-instruct"];
+  async function readWithLlama(img, key) {
+    const url = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result)); fr.onerror = rej; fr.readAsDataURL(img); });
+    let last = "";
+    for (const model of LLAMA_MODELS) {
+      const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key },
+        body: JSON.stringify({ model, temperature: 0, response_format: { type: "json_object" }, messages: [{ role: "user", content: [
+          { type: "text", text: GEMINI_PROMPT + fixesText() }, { type: "image_url", image_url: { url } }] }] }) });
+      if (r.status === 404 || r.status === 400 && /model/i.test(await r.clone().text().catch(() => ""))) { last = "modelo no disponible"; continue; }
+      if (r.status === 401 || r.status === 403) throw new Error("clave de Groq no válida");
+      if (r.status === 429) throw new Error("se acabó el cupo gratis de Groq por ahora");
+      if (!r.ok) throw new Error("Groq respondió " + r.status);
+      const j = await r.json(), txt = j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+      const m = String(txt || "").match(/\{[\s\S]*\}/), o = m ? JSON.parse(m[0]) : null;
+      if (!(o && o.encontrada && o.direccion)) return null;
+      return { address: String(o.direccion).trim(), ref: String(o.referencia || "").trim() };
+    }
+    throw new Error(last || "Llama no respondió");
+  }
   async function readWithGemini(img, key) {
     const b64 = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(",")[1]); fr.onerror = rej; fr.readAsDataURL(img); });
     const body = { contents: [{ parts: [
@@ -1027,12 +1057,12 @@ input:disabled { opacity: .45; }
   }
   let pendingQR = "", readToken = 0;
   // Cuando el lector del teléfono termina, avisa si coincide con Gemini o muestra lo que leyó para elegir.
-  async function crossCheck(token, gAddr, ocrP, say) {
+  async function crossCheck(token, gAddr, ocrP, say, AI = "Gemini") {
     const lines = await Promise.race([ocrP, new Promise(r => setTimeout(() => r(null), 30000))]);
     if (token !== readToken || $("stage").hidden || $("addrInput").value.trim() !== gAddr) return;
     const o = lines && lines.length ? ocrAddress(lines) : "";
-    if (!o) { say("Leída por Gemini (el lector del teléfono no la encontró). Revísala y guárdala.", "ok"); return; }
-    if (sameAddress(gAddr, o)) { say("✓✓ Confirmada: Gemini y el lector del teléfono leyeron lo mismo.", "ok"); return; }
+    if (!o) { say("Leída por " + AI + " (el lector del teléfono no la encontró). Revísala y guárdala.", "ok"); return; }
+    if (sameAddress(gAddr, o)) { say("✓✓ Confirmada: " + AI + " y el lector del teléfono leyeron lo mismo.", "ok"); return; }
     say("Ojo: el lector del teléfono leyó otra cosa. Mirá la etiqueta y elegí:", "err");
     const st = $("scanStatus"), b = document.createElement("button");
     b.type = "button"; b.className = "mini"; b.style.cssText = "display:block;margin-top:6px;text-align:left";
@@ -1054,8 +1084,10 @@ input:disabled { opacity: .45; }
       if (known) { showVerify(known); say("Este paquete ya está en la lista.", "ok"); $("saveBtn").disabled = false; return; }
       pendingQR = qr;
     }
-    const ownKey = $("geminiInput").value.trim(), gkey = ownKey || (window.leerEnServidor ? "servidor" : "");
-    let why = gkey ? "" : "Sin clave de Gemini: leída en el teléfono. ";
+    // la IA elegida en Ajustes: Llama (Groq) o Gemini
+    const useLlama = $("aiSel").value === "llama", AI = useLlama ? "Llama" : "Gemini";
+    const ownKey = (useLlama ? $("groqInput") : $("geminiInput")).value.trim(), gkey = ownKey || (!useLlama && window.leerEnServidor ? "servidor" : "");
+    let why = gkey ? "" : "Sin clave de " + (useLlama ? "Groq" : "Gemini") + ": leída en el teléfono. ";
     const token = ++readToken;
     // Doble lectura: el lector del teléfono lee al mismo tiempo que Gemini y después se comparan.
     // en la app de Android, ML Kit lee primero y Gemini queda solo para cuando la lectura no cierra
@@ -1074,18 +1106,18 @@ input:disabled { opacity: .45; }
     }
     if (gkey) {
       try {
-        say(ML ? "La lectura del teléfono no cerró: ahora lee Gemini…" : "Gemini y el lector del teléfono están leyendo la dirección…");
-        const got = await readWithGemini(await shrink(file, 1600, false), ownKey);
+        say(ML ? "La lectura del teléfono no cerró: ahora lee " + AI + "…" : AI + " y el lector del teléfono están leyendo la dirección…");
+        const got = await (useLlama ? readWithLlama : readWithGemini)(await shrink(file, 1600, false), ownKey);
         $("saveBtn").disabled = false;
         if (got) {
           $("addrInput").value = lastRead = got.address; $("refInput").value = got.ref; schedulePreview();
-          if (ML) { say("Leída por Gemini (el teléfono no la leyó completa). Revisala y guardala.", "ok"); return; }
-          say("Leída por Gemini. Comparando con el lector del teléfono…", "ok");
-          crossCheck(token, got.address, ocrP, say);
+          if (ML) { say("Leída por " + AI + " (el teléfono no la leyó completa). Revisala y guardala.", "ok"); return; }
+          say("Leída por " + AI + ". Comparando con el lector del teléfono…", "ok");
+          crossCheck(token, got.address, ocrP, say, AI);
           return;
         }
-        why = "Gemini no encontró la dirección: leída en el teléfono. ";
-      } catch (e) { why = "Gemini falló (" + (e.message || e) + "): leída en el teléfono. "; }
+        why = AI + " no encontró la dirección: leída en el teléfono. ";
+      } catch (e) { why = AI + " falló (" + (e.message || e) + "): leída en el teléfono. "; }
       say(why + "Leyendo…");
     }
     try {
@@ -1627,7 +1659,7 @@ input:disabled { opacity: .45; }
   }
 
   // ---------- ajustes, exportar ----------
-  [["keyInput", "key"], ["geminiInput", "gemini"], ["startInput", "start"], ["countryInput", "country"]].forEach(([id, k]) => {
+  [["keyInput", "key"], ["geminiInput", "gemini"], ["groqInput", "groq"], ["startInput", "start"], ["countryInput", "country"]].forEach(([id, k]) => {
     $(id).value = store.get(k, "");
     $(id).addEventListener("change", () => store.set(k, $(id).value.trim()));
   });
@@ -1641,6 +1673,9 @@ input:disabled { opacity: .45; }
   });
   $("returnChk").checked = store.get("back", false);
   $("returnChk").addEventListener("change", () => store.set("back", $("returnChk").checked));
+  const aiSync = () => { $("llamaBox").hidden = $("aiSel").value !== "llama"; $("geminiBox").hidden = $("aiSel").value !== "gemini"; };
+  $("aiSel").value = store.get("ai", "llama"); aiSync();
+  $("aiSel").addEventListener("change", () => { store.set("ai", $("aiSel").value); aiSync(); });
   $("geminiAlwaysChk").checked = store.get("geminiAlways", false);
   $("geminiAlwaysChk").addEventListener("change", () => store.set("geminiAlways", $("geminiAlwaysChk").checked));
   $("geminiAlwaysBox").hidden = !plug("LectorTexto");
