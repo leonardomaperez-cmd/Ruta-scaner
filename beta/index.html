@@ -766,7 +766,7 @@ input:disabled { opacity: .45; }
     const left = list.filter(it => !it.done).length;
     // paquetes: cada parada cuenta 1 más sus +1…+5
     const pk = (arr) => arr.reduce((n, it) => n + 1 + (it.extra || 0), 0), total = pk(list), given = pk(list.filter(it => it.done));
-    const pkText = total ? (given === total ? "📦 " + total + " de " + total + " · todo entregado" : "📦 " + given + " de " + total + " entregados") : "";
+    const pkText = total ? "📦 " + given + "/" + total + (given === total ? " ✓" : "") : "";
     $("chipSummary").textContent = [route && route.summary ? route.summary + (left ? " · faltan " + left + (left === 1 ? " parada" : " paradas") : "") : "", pkText].filter(Boolean).join("\n");
     const pending = list.filter(it => !it.done).slice(0, 10);
     if (pending.length) {
