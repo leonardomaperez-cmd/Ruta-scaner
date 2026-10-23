@@ -334,12 +334,7 @@ input:disabled { opacity: .45; }
       <input id="keyInput" type="password" autocomplete="off" placeholder="Pega tu clave (API key)">
       <span class="note">Sin clave, la app usa mapas gratuitos de OpenStreetMap para ubicar y ordenar las paradas, sin cuenta. Con una clave de TomTom (gratis en developer.tomtom.com) la ruta tiene en cuenta el tráfico. Se guarda solo en este teléfono.</span>
       <label class="label" for="aiSel">Inteligencia artificial que lee la etiqueta</label>
-      <select id="aiSel"><option value="gemini">Gemini de Google</option><option value="glm">GLM-4.6V-Flash de Z.ai (gratis, China)</option><option value="llama">Qwen por Groq (de pago)</option></select>
-      <div id="glmBox">
-      <label class="label" for="glmInput">Clave de Z.ai (para GLM)</label>
-      <input id="glmInput" type="password" autocomplete="off" placeholder="Pega tu clave de z.ai">
-      <span class="note">Gratis en z.ai (API Keys). Ojo: las fotos de las etiquetas van a servidores de Zhipu, en China. Se guarda solo en este teléfono.</span>
-      </div>
+      <select id="aiSel"><option value="gemini">Gemini de Google</option><option value="llama">Qwen por Groq (de pago)</option></select>
       <div id="llamaBox">
       <label class="label" for="groqInput">Clave de Groq</label>
       <input id="groqInput" type="password" autocomplete="off" placeholder="Pega tu clave de console.groq.com">
@@ -986,7 +981,6 @@ input:disabled { opacity: .45; }
   const LLAMA_MODELS = ["qwen/qwen3.8-27b"];
   const OAI = {
     llama: { name: "Groq", url: "https://api.groq.com/openai/v1/chat/completions", models: LLAMA_MODELS, extra: { reasoning_effort: "none", response_format: { type: "json_object" } } },
-    glm: { name: "Z.ai", url: "https://api.z.ai/api/paas/v4/chat/completions", models: ["glm-4.6v-flash"], extra: { thinking: { type: "disabled" } } },
   };
   async function readWithLlama(img, key, cfg = OAI.llama) {
     const url = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result)); fr.onerror = rej; fr.readAsDataURL(img); });
@@ -1095,9 +1089,9 @@ input:disabled { opacity: .45; }
       pendingQR = qr;
     }
     // la IA elegida en Ajustes: Llama (Groq) o Gemini
-    const aiv = $("aiSel").value, useLlama = aiv !== "gemini", AI = { llama: "Qwen", glm: "GLM" }[aiv] || "Gemini";
-    const ownKey = $({ llama: "groqInput", glm: "glmInput" }[aiv] || "geminiInput").value.trim(), gkey = ownKey || (!useLlama && window.leerEnServidor ? "servidor" : "");
-    let why = gkey ? "" : "Sin clave de " + ({ llama: "Groq", glm: "Z.ai" }[aiv] || "Gemini") + ": leída en el teléfono. ";
+    const aiv = $("aiSel").value, useLlama = aiv !== "gemini", AI = { llama: "Qwen" }[aiv] || "Gemini";
+    const ownKey = $({ llama: "groqInput" }[aiv] || "geminiInput").value.trim(), gkey = ownKey || (!useLlama && window.leerEnServidor ? "servidor" : "");
+    let why = gkey ? "" : "Sin clave de " + ({ llama: "Groq" }[aiv] || "Gemini") + ": leída en el teléfono. ";
     const token = ++readToken;
     // Doble lectura: el lector del teléfono lee al mismo tiempo que Gemini y después se comparan.
     // en la app de Android, ML Kit lee primero y Gemini queda solo para cuando la lectura no cierra
@@ -1669,7 +1663,7 @@ input:disabled { opacity: .45; }
   }
 
   // ---------- ajustes, exportar ----------
-  [["keyInput", "key"], ["geminiInput", "gemini"], ["groqInput", "groq"], ["glmInput", "glm"], ["startInput", "start"], ["countryInput", "country"]].forEach(([id, k]) => {
+  [["keyInput", "key"], ["geminiInput", "gemini"], ["groqInput", "groq"], ["startInput", "start"], ["countryInput", "country"]].forEach(([id, k]) => {
     $(id).value = store.get(k, "");
     $(id).addEventListener("change", () => store.set(k, $(id).value.trim()));
   });
@@ -1683,8 +1677,8 @@ input:disabled { opacity: .45; }
   });
   $("returnChk").checked = store.get("back", false);
   $("returnChk").addEventListener("change", () => store.set("back", $("returnChk").checked));
-  const aiSync = () => { $("llamaBox").hidden = $("aiSel").value !== "llama"; $("glmBox").hidden = $("aiSel").value !== "glm"; $("geminiBox").hidden = $("aiSel").value !== "gemini"; };
-  $("aiSel").value = store.get("ai", "gemini"); aiSync();
+  const aiSync = () => { $("llamaBox").hidden = $("aiSel").value !== "llama"; $("geminiBox").hidden = $("aiSel").value !== "gemini"; };
+  $("aiSel").value = store.get("ai", "gemini"); if (!$("aiSel").value) $("aiSel").value = "gemini"; aiSync();
   $("aiSel").addEventListener("change", () => { store.set("ai", $("aiSel").value); aiSync(); });
   $("geminiAlwaysChk").checked = store.get("geminiAlways", false);
   $("geminiAlwaysChk").addEventListener("change", () => store.set("geminiAlways", $("geminiAlwaysChk").checked));
