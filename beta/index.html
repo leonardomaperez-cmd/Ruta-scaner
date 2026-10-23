@@ -190,6 +190,12 @@ input:disabled { opacity: .45; }
 [hidden] { display: none !important; }
 /* marcadores numerados */
 .pin { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: linear-gradient(135deg, #00855d, #006948); border: 2.5px solid #fff; box-shadow: 0 3px 8px rgba(15,23,42,.45); }
+.pinw { position: relative; }
+.pinx { position: absolute; top: -8px; right: -10px; min-width: 20px; height: 18px; padding: 0 4px; border-radius: 9px; background: #f59e0b; color: #1f1300; border: 2px solid #fff; font: 800 10px/14px "Space Grotesk", system-ui, sans-serif; text-align: center; font-style: normal; }
+.xtra { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: #f59e0b; color: #1f1300; font: 800 .78rem var(--display); vertical-align: 1px; }
+.xpick { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.xpick button { min-width: 44px; height: 36px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: 700 .95rem var(--display); cursor: pointer; }
+.xpick button.on { background: #f59e0b; border-color: #f59e0b; color: #1f1300; }
 .pin span { transform: rotate(45deg); font: 700 12px "Space Grotesk", system-ui, sans-serif; color: #fff; letter-spacing: -.02em; }
 .pin.start { background: #0f172a; } .pin.start span { color: #fff; font-size: 15px; }
 .pin.next { background: linear-gradient(135deg, #85f8c4, #4edea3); width: 38px; height: 38px; box-shadow: 0 0 0 6px rgba(133,248,196,.3), 0 3px 10px rgba(15,23,42,.5); }
@@ -274,6 +280,8 @@ input:disabled { opacity: .45; }
     <label class="label newonly" for="refInput">Referencia (opcional)</label>
     <div class="refrow newonly"><input id="refInput" type="text" placeholder="Ej.: portón negro, timbre 2"><button class="btn mic" id="micBtn" type="button" aria-label="Dictar la referencia" hidden>🎤</button></div>
     <span class="note newonly" id="micInfo" hidden></span>
+    <label class="label newonly">¿Más paquetes en esta dirección?</label>
+    <div class="xpick newonly" id="newExtra"></div>
     <div class="checkmap newonly" id="checkMap" hidden></div>
     <span class="note newonly" id="checkInfo" hidden></span>
     <div class="assign newonly">
@@ -526,7 +534,7 @@ input:disabled { opacity: .45; }
   if (NATIVE && store.get("permsDone", false)) startMe(false); // en la app de Android se sigue la ubicación desde que se abre (la primera vez, después de pedir los permisos)
   else try { navigator.permissions && navigator.permissions.query({ name: "geolocation" }).then(st => { if (st.state === "granted") startMe(false); }).catch(() => {}); } catch {}
   const layer = L.layerGroup().addTo(map);
-  const pinIcon = (text, cls) => { const z = cls === "next" ? 38 : 32; return L.divIcon({ className: "", html: `<div class="pin ${cls || ""}"><span>${text}</span></div>`, iconSize: [z, z], iconAnchor: [z / 2, z], popupAnchor: [0, -z + 2] }); };
+  const pinIcon = (text, cls, extra) => { const z = cls === "next" ? 38 : 32; return L.divIcon({ className: "", html: `<div class="pinw"><div class="pin ${cls || ""}"><span>${text}</span></div>${extra ? `<i class="pinx">+${extra}</i>` : ""}</div>`, iconSize: [z, z], iconAnchor: [z / 2, z], popupAnchor: [0, -z + 2] }); };
   const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
   const gmaps = (it) => "https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=" +
     encodeURIComponent(typeof it.lat === "number" ? it.lat + "," + it.lng : it.address);
@@ -584,7 +592,7 @@ input:disabled { opacity: .45; }
   function arriveText(it) {
     const stop = route ? route.order.indexOf(it.num) + 1 : 0, l = letters().get(it.num);
     return "Llegando a " + (stop ? "la parada " + stop + (l ? ", letra " + l.split("").join(" ") : "") + ". " : "la parada. ") +
-      "Paquete número " + it.num + ". " + (it.ref ? "Referencia: " + it.ref + "." : "Sin referencia.");
+      "Paquete número " + it.num + ". " + (it.extra ? "Ojo, lleva " + (it.extra + 1) + " paquetes. " : "") + (it.ref ? "Referencia: " + it.ref + "." : "Sin referencia.");
   }
   function showArrival(it) {
     arriveItem = it;
@@ -620,6 +628,7 @@ input:disabled { opacity: .45; }
     const view = () => {
       d.innerHTML = `<b>${stop ? "Parada " + stop + (letter ? " · Letra " + letter : "") + "<br>" : "Sin ordenar<br>"}Nº ${pad(it.num)}</b>
         <div>${esc(it.address)}</div>
+        ${it.extra ? `<div><span class="xtra" style="margin:0">+${it.extra}</span> ${it.extra === 1 ? "1 paquete más" : it.extra + " paquetes más"} en esta dirección</div>` : ""}
         ${it.ref ? `<div class="pref">🗒 ${esc(it.ref)}</div>` : `<div class="muted">Sin referencia</div>`}
         ${it.done ? "<div>✓ Entregada</div>" : ""}
         <div class="pacts"><a class="mini" href="${gmaps(it)}" target="_blank" rel="noopener">Navegar</a>
@@ -661,7 +670,7 @@ input:disabled { opacity: .45; }
     orderedItems().forEach((it) => {
       if (typeof it.lat !== "number") return;
       const stop = route ? route.order.indexOf(it.num) + 1 : 0;
-      const m = L.marker([it.lat, it.lng], { icon: pinIcon(stop ? stop + (lt.get(it.num) || "") : it.num, it.done ? "done" : (stop ? (it === nx ? "next" : "") : "unordered")), zIndexOffset: it === nx ? 1000 : 0 });
+      const m = L.marker([it.lat, it.lng], { icon: pinIcon(stop ? stop + (lt.get(it.num) || "") : it.num, it.done ? "done" : (stop ? (it === nx ? "next" : "") : "unordered"), it.extra), zIndexOffset: it === nx ? 1000 : 0 });
       m.bindPopup(() => stopPopup(it, stop, lt.get(it.num)), { minWidth: 220, maxWidth: 290 });
       m.addTo(layer);
       pts.push([it.lat, it.lng]);
@@ -697,6 +706,7 @@ input:disabled { opacity: .45; }
       b.title = stop ? "Parada " + stop + (l ? ", letra " + l : "") : "Sin ordenar";
       const a = document.createElement("div"); a.className = "addr";
       const t = document.createElement("b"); t.textContent = it.address;
+      if (it.extra) { const x = document.createElement("span"); x.className = "xtra"; x.textContent = "+" + it.extra; x.title = it.extra + " paquete(s) más en esta dirección"; t.prepend(x); x.style.marginLeft = "0"; x.style.marginRight = "6px"; }
       const meta = document.createElement("small");
       meta.textContent = "Nº " + pad(it.num) + (typeof it.lat === "number" ? "" : " · sin ubicar") + (it.ref ? " · " + it.ref : "");
       a.append(t, meta);
@@ -973,7 +983,7 @@ input:disabled { opacity: .45; }
     hidePreview();
     $("stage").classList.remove("is-verify"); $("verifyBox").hidden = true; pendingQR = "";
     $("stage").hidden = false; $("previewBox").hidden = false; $("lines").hidden = true;
-    $("previewImg").src = URL.createObjectURL(file); $("addrInput").value = ""; $("refInput").value = ""; lastRead = "";
+    $("previewImg").src = URL.createObjectURL(file); $("addrInput").value = ""; $("refInput").value = ""; lastRead = ""; setExtra($("newExtra"), 0);
     const st = $("scanStatus"); const say = (m, c) => { st.className = "status" + (c ? " " + c : ""); st.textContent = m; };
     say("Preparando la foto…"); $("saveBtn").disabled = true;
     const qr = await readQR(qrSrc || file);
@@ -1087,13 +1097,25 @@ input:disabled { opacity: .45; }
     return true;
   }
   ["photo", "gallery"].forEach(id => $(id).addEventListener("change", e => { const f = e.target.files[0]; if (f) onPhoto(f); e.target.value = ""; }));
-  $("manualBtn").addEventListener("click", () => { hidePreview(); lastRead = ""; pendingQR = ""; $("stage").classList.remove("is-verify"); $("verifyBox").hidden = true; $("refInput").value = ""; $("stage").hidden = false; $("scanControls").hidden = true; $("previewBox").hidden = true; $("lines").hidden = true; $("addrInput").focus(); });
+  $("manualBtn").addEventListener("click", () => { hidePreview(); lastRead = ""; pendingQR = ""; $("stage").classList.remove("is-verify"); $("verifyBox").hidden = true; $("refInput").value = ""; setExtra($("newExtra"), 0); $("stage").hidden = false; $("scanControls").hidden = true; $("previewBox").hidden = true; $("lines").hidden = true; $("addrInput").focus(); });
   ["photo", "gallery"].forEach(id => $(id).addEventListener("change", () => { $("scanControls").hidden = true; }));
 
   function toast(m, bad) {
     if ($("scanner").hidden) { const mt = $("mapToast"); mt.textContent = m; mt.style.color = bad ? "#ff8a80" : "#fff"; mt.hidden = false; clearTimeout(toast.m); toast.m = setTimeout(() => mt.hidden = true, 3000); return; }
     const t = $("toast"); t.textContent = m; t.className = "scan-msg"; t.style.color = bad ? "#ff8a80" : "#9ff0c4"; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 3500); }
 
+  // Selector +1 … +5: paquetes de más para la misma dirección (tocar el marcado lo quita).
+  function extraPicker(box) {
+    box.textContent = ""; box.value = 0;
+    for (let n = 1; n <= 5; n++) {
+      const b = document.createElement("button"); b.type = "button"; b.textContent = "+" + n; b.dataset.n = n;
+      b.setAttribute("aria-label", n + " paquete" + (n > 1 ? "s" : "") + " más");
+      b.addEventListener("click", () => setExtra(box, box.value === n ? 0 : n));
+      box.append(b);
+    }
+  }
+  function setExtra(box, n) { box.value = n || 0; box.querySelectorAll("button").forEach(b => b.classList.toggle("on", Number(b.dataset.n) === box.value)); }
+  extraPicker($("newExtra"));
   $("saveBtn").addEventListener("click", async () => {
     const address = $("addrInput").value.replace(/\s+/g, " ").trim();
     if (!address) { toast("Escribe o escanea una dirección primero.", true); return; }
@@ -1102,10 +1124,11 @@ input:disabled { opacity: .45; }
     if (pre) { it.lat = pre.lat; it.lng = pre.lng; }
     hidePreview();
     const ref = $("refInput").value.replace(/\s+/g, " ").trim(); if (ref) it.ref = ref;
+    if ($("newExtra").value) it.extra = $("newExtra").value;
     rememberFix(lastRead.replace(/\s+/g, " "), address); lastRead = "";
     if (pendingQR) { it.qr = pendingQR; pendingQR = ""; }
     items.push(it); save();
-    $("stage").hidden = true; $("addrInput").value = ""; $("refInput").value = "";
+    $("stage").hidden = true; $("addrInput").value = ""; $("refInput").value = ""; setExtra($("newExtra"), 0);
     toast("Guardada como Nº " + pad(it.num));
     refresh(false);
     if (pre) { refresh(true); return; }
@@ -1251,6 +1274,7 @@ input:disabled { opacity: .45; }
       el.innerHTML = '<div class="ebox" role="dialog" aria-modal="true" aria-labelledby="editTitle"><h3 id="editTitle"></h3>'
         + '<label class="label" for="editAddr">Dirección</label><div class="refrow"><textarea id="editAddr" rows="2"></textarea><button class="btn mic" id="editAddrMic" type="button" aria-label="Dictar la dirección">🎤</button></div>'
         + '<label class="label" for="editRef">Referencia</label><div class="refrow"><textarea id="editRef" rows="2" placeholder="Ej.: portón negro, timbre 2"></textarea><button class="btn mic" id="editRefMic" type="button" aria-label="Dictar la referencia">🎤</button></div>'
+        + '<label class="label">Paquetes de más en esta dirección</label><div class="xpick" id="editExtra"></div>'
         + '<span class="note" id="editNote"></span><div class="erow"><button class="btn" id="editNo" type="button">Cancelar</button><button class="btn btn-primary" id="editOk" type="button">Guardar</button></div></div>';
       document.body.append(el);
       if (!SR) { $("editAddrMic").hidden = true; $("editRefMic").hidden = true; }
@@ -1261,12 +1285,14 @@ input:disabled { opacity: .45; }
       const close = () => { stopMic(); el.hidden = true; };
       $("editNo").addEventListener("click", close);
       el.addEventListener("click", (e) => { if (e.target === el) close(); });
+      extraPicker($("editExtra"));
       $("editOk").addEventListener("click", async () => {
         const cur = el._it; stopMic();
         const na = $("editAddr").value.replace(/\s+/g, " ").trim(), nr = $("editRef").value.replace(/\s+/g, " ").trim();
         if (!na) { note("La dirección no puede quedar vacía."); return; }
         const moved = na !== cur.address;
         cur.address = na; if (nr) cur.ref = nr; else delete cur.ref;
+        if ($("editExtra").value) cur.extra = $("editExtra").value; else delete cur.extra;
         if (moved) { delete cur.lat; delete cur.lng; }
         save(); el.hidden = true; refresh(false); toast("Nº " + pad(cur.num) + " actualizada");
         if (moved) { try { const g = await geocode(na, $("keyInput").value.trim()); if (g) { cur.lat = g.lat; cur.lng = g.lng; save(); refresh(false); } else toast("No encontré la nueva dirección en el mapa", true); } catch {} }
@@ -1274,7 +1300,7 @@ input:disabled { opacity: .45; }
     }
     el._it = it;
     $("editTitle").textContent = "Editar Nº " + pad(it.num);
-    $("editAddr").value = it.address; $("editRef").value = it.ref || ""; $("editNote").textContent = "";
+    $("editAddr").value = it.address; $("editRef").value = it.ref || ""; $("editNote").textContent = ""; setExtra($("editExtra"), it.extra || 0);
     el.hidden = false; setTimeout(() => $("editAddr").focus(), 50);
   }
   if (SR) {
@@ -1625,8 +1651,8 @@ input:disabled { opacity: .45; }
   $("exportBtn").addEventListener("click", () => {
     const q = (s) => '"' + String(s).replace(/"/g, '""') + '"';
     const lt = letters();
-    const rows = orderedItems().map(it => [route ? (route.order.indexOf(it.num) + 1 || "") : "", lt.get(it.num) || "", pad(it.num), q(it.address), q(it.ref || ""), it.lat ?? "", it.lng ?? "", it.done ? "si" : "no"].join(","));
-    const csv = "﻿parada,letra,numero,direccion,referencia,lat,lng,entregada\n" + rows.join("\n") + "\n";
+    const rows = orderedItems().map(it => [route ? (route.order.indexOf(it.num) + 1 || "") : "", lt.get(it.num) || "", pad(it.num), q(it.address), q(it.ref || ""), it.extra || 0, it.lat ?? "", it.lng ?? "", it.done ? "si" : "no"].join(","));
+    const csv = "﻿parada,letra,numero,direccion,referencia,paquetes_extra,lat,lng,entregada\n" + rows.join("\n") + "\n";
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
     a.download = "paradas.csv"; document.body.append(a); a.click(); a.remove();
   });
