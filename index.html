@@ -285,6 +285,7 @@ input:disabled { opacity: .45; }
    <div class="wrap">
     <div class="card">
       <button id="optBtn" class="btn btn-primary" type="button">Optimizar ruta</button>
+      <button id="optHereBtn" class="mini" type="button" style="margin-top:6px;width:100%">📍 Optimizar desde donde estoy</button>
       <div class="status" id="optStatus" role="status"></div>
       <div class="summary" id="summary" hidden></div>
       <a id="navAll" class="btn" target="_blank" rel="noopener" hidden>Navegar en Google Maps (próximas 10)</a>
@@ -1230,13 +1231,13 @@ input:disabled { opacity: .45; }
     if (!navigator.geolocation) return Promise.resolve(null);
     return new Promise(r => navigator.geolocation.getCurrentPosition(p => r({ lat: p.coords.latitude, lng: p.coords.longitude }), () => r(null), { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 }));
   }
-  async function optimize() {
+  async function optimize(fromHere) {
     const st = $("optStatus"); const say = (m, c) => { st.className = "status" + (c ? " " + c : ""); st.textContent = m; };
     const key = $("keyInput").value.trim();
     const todo = items.filter(it => !it.done);
     if (!todo.length) { say("No hay paradas pendientes.", "err"); return; }
-    const here = $("hereChk").checked, startText = here ? "" : $("startInput").value.trim();
-    $("optBtn").disabled = true;
+    const here = fromHere === true || $("hereChk").checked, startText = here ? "" : $("startInput").value.trim();
+    $("optBtn").disabled = $("optHereBtn").disabled = true;
     try {
       for (let i = 0; i < todo.length; i++) {
         const it = todo[i];
@@ -1321,9 +1322,10 @@ input:disabled { opacity: .45; }
     } catch (e) {
       route = route && route.summary && !/^0\.0 km/.test(route.summary) ? route : null; render();
       say("No se pudo optimizar: " + (e.message || e), "err");
-    } finally { $("optBtn").disabled = false; }
+    } finally { $("optBtn").disabled = $("optHereBtn").disabled = false; }
   }
-  $("optBtn").addEventListener("click", optimize);
+  $("optBtn").addEventListener("click", () => optimize());
+  $("optHereBtn").addEventListener("click", () => optimize(true));
   // Después de guardar, la cámara queda lista para la siguiente etiqueta.
   $("saveBtn").addEventListener("click", () => { if ($("stage").hidden) resumeScan(); });
 
@@ -1420,7 +1422,11 @@ input:disabled { opacity: .45; }
   if (store.get("country", null) === null) { $("countryInput").value = "AR"; store.set("country", "AR"); }
   const hereSync = () => { $("startInput").disabled = $("hereChk").checked; };
   $("hereChk").checked = store.get("startHere", false); hereSync();
-  $("hereChk").addEventListener("change", () => { store.set("startHere", $("hereChk").checked); hereSync(); });
+  $("hereChk").addEventListener("change", async () => {
+    store.set("startHere", $("hereChk").checked); hereSync();
+    // al marcarla, la ruta se vuelve a ordenar desde donde estás
+    if ($("hereChk").checked && items.some(it => !it.done)) { toast("Optimizando la ruta desde tu ubicación…"); await optimize(true); toast($("optStatus").textContent, /err/.test($("optStatus").className)); }
+  });
   $("returnChk").checked = store.get("back", false);
   $("returnChk").addEventListener("change", () => store.set("back", $("returnChk").checked));
   $("geminiAlwaysChk").checked = store.get("geminiAlways", false);
