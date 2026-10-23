@@ -603,6 +603,18 @@ input:disabled { opacity: .45; }
       iconSize: [z, z], iconAnchor: [z / 2, z / 2], popupAnchor: [0, -z / 2] });
   };
   const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  // Teléfono del cliente: WhatsApp (wa.me, con el mensaje ya escrito) y llamada (tel:). Si no tiene +, se toma como número de Argentina.
+  function waNum(raw) {
+    let d = String(raw || "").replace(/\D/g, "");
+    if (/^\s*\+/.test(raw || "")) return d;
+    if (d.startsWith("549")) return d;
+    if (d.startsWith("54")) return "549" + d.slice(2);
+    d = d.replace(/^0/, "");
+    if (d.length === 12) for (const i of [2, 3, 4]) if (d.substr(i, 2) === "15") { d = d.slice(0, i) + d.slice(i + 2); break; }
+    return "549" + d;
+  }
+  const waLink = (it) => "https://wa.me/" + waNum(it.tel) + "?text=" + encodeURIComponent("Hola, soy el repartidor. Estoy en camino con tu paquete " + code(it.num) + (it.address ? " para " + it.address : "") + ".");
+  const telLink = (it) => "tel:" + String(it.tel).replace(/[^\d+]/g, "");
   const gmaps = (it) => "https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=" +
     encodeURIComponent(typeof it.lat === "number" ? it.lat + "," + it.lng : it.address);
 
@@ -701,6 +713,7 @@ input:disabled { opacity: .45; }
         ${it.done ? "<div>✓ Entregada</div>" : ""}
         ${it.photo ? '<img class="pkmini" alt="Foto del paquete" hidden>' : ""}
         <div class="pacts"><a class="mini" href="${gmaps(it)}" target="_blank" rel="noopener">Navegar</a>
+        ${it.tel ? `<a class="mini" href="${esc(waLink(it))}" target="_blank" rel="noopener">💬 WhatsApp</a><a class="mini" href="${esc(telLink(it))}">📞 Llamar</a>` : ""}
         <button class="mini" type="button" data-a="edit">Editar</button>
         <button class="mini" type="button" data-a="done">${it.done ? "Deshacer" : "Entregada"}</button>
         <button class="mini" type="button" data-a="del">Eliminar</button></div>`;
@@ -823,6 +836,11 @@ input:disabled { opacity: .45; }
         });
         if (it.photo) { const ph = document.createElement("button"); ph.type = "button"; ph.innerHTML = '<span style="font-size:1.1rem">📷</span><span>Foto</span>'; ph.addEventListener("click", () => showPhoto(it)); acts.append(nav, see, ph, ed, del); }
         else acts.append(nav, see, ed, del);
+        if (it.tel) {
+          const wa = document.createElement("a"); wa.href = waLink(it); wa.target = "_blank"; wa.rel = "noopener"; wa.innerHTML = '<span style="font-size:1.1rem">💬</span><span>WhatsApp</span>';
+          const ll = document.createElement("a"); ll.href = telLink(it); ll.innerHTML = '<span style="font-size:1.1rem">📞</span><span>Llamar</span>';
+          acts.append(wa, ll);
+        }
         li.append(acts);
       }
       ol.append(li);
@@ -1308,6 +1326,7 @@ input:disabled { opacity: .45; }
       <button class="mini" type="button" data-f="alt" hidden style="text-align:left"></button>
       <div class="checkmap" data-f="cmap" hidden></div><span class="note" data-f="cinfo" hidden></span>
       <label class="label">Referencia (opcional)</label><div class="refrow"><input type="text" data-f="ref" placeholder="Ej.: portón negro, timbre 2"><button class="btn mic" type="button" data-f="mic" aria-label="Dictar la referencia">🎤</button></div>
+      <label class="label">Teléfono del cliente (opcional)</label><input type="tel" inputmode="tel" data-f="tel" placeholder="Ej.: 11 2345 6789">
       <span class="note" data-f="note"></span>
       <label class="label">¿Más paquetes en esta dirección?</label><div class="xpick" data-f="extra"></div>
       <label class="label">Foto del paquete entero (para reconocerlo)</label><div class="photorow"><button class="btn" type="button" data-f="pbtn">📷 Sacar foto del paquete</button><img alt="Foto del paquete" data-f="pimg" hidden><button class="mini" type="button" data-f="pdel" hidden>Quitar</button></div><input type="file" accept="image/*" capture="environment" hidden data-f="pin">
@@ -1316,7 +1335,7 @@ input:disabled { opacity: .45; }
     c.querySelector(".rhead b").textContent = code(isNew ? nextNum() : it.num);
     c.querySelector(".rhead span").textContent = isNew ? "código del próximo paquete" : (stop ? "Parada " + stop : "");
     if (isNew) { f("del").textContent = "Limpiar"; f("ok").textContent = "Guardar"; }
-    f("addr").value = it.address; f("ref").value = it.ref || "";
+    f("addr").value = it.address; f("ref").value = it.ref || ""; f("tel").value = it.tel || "";
     const pv = addrPreview(f("addr"), f("cmap"), f("cinfo"));
     suggestFor(f("addr"), () => pv.now());
     if (it.alt) { f("alt").hidden = false; f("alt").textContent = "El lector del teléfono leyó otra cosa: usar «" + it.alt + "»"; f("alt").addEventListener("click", () => { f("addr").value = it.alt; f("alt").hidden = true; }); }
@@ -1338,6 +1357,7 @@ input:disabled { opacity: .45; }
       const moved = na !== it.address;
       if (it.read && na !== it.read) rememberFix(it.read, na);
       it.address = na; if (nr) it.ref = nr; else delete it.ref;
+      const nt = f("tel").value.trim(); if (nt) it.tel = nt; else delete it.tel;
       if (f("extra").value) it.extra = f("extra").value; else delete it.extra;
       await ph.save(it);
       delete it.review; delete it.alt; delete it.read;
@@ -1600,6 +1620,7 @@ input:disabled { opacity: .45; }
       el.innerHTML = '<div class="ebox" role="dialog" aria-modal="true" aria-labelledby="editTitle"><h3 id="editTitle"></h3>'
         + '<label class="label" for="editAddr">Dirección</label><div class="refrow"><textarea id="editAddr" rows="2"></textarea><button class="btn mic" id="editAddrMic" type="button" aria-label="Dictar la dirección">🎤</button></div>'
         + '<label class="label" for="editRef">Referencia</label><div class="refrow"><textarea id="editRef" rows="2" placeholder="Ej.: portón negro, timbre 2"></textarea><button class="btn mic" id="editRefMic" type="button" aria-label="Dictar la referencia">🎤</button></div>'
+        + '<label class="label" for="editTel">Teléfono del cliente</label><input id="editTel" type="tel" inputmode="tel" placeholder="Ej.: 11 2345 6789">'
         + '<label class="label">Paquetes de más en esta dirección</label><div class="xpick" id="editExtra"></div>'
         + '<label class="label">Foto del paquete entero (para reconocerlo)</label><div class="photorow"><button class="btn" id="editPhotoBtn" type="button">📷 Sacar foto del paquete</button><img id="editThumb" alt="Foto del paquete" hidden><button class="mini" id="editPhotoDel" type="button" hidden>Quitar</button></div><input id="editPhoto" type="file" accept="image/*" capture="environment" hidden>'
         + '<span class="note" id="editNote"></span><div class="erow"><button class="btn" id="editNo" type="button">Cancelar</button><button class="btn btn-primary" id="editOk" type="button">Guardar</button></div></div>';
@@ -1620,6 +1641,7 @@ input:disabled { opacity: .45; }
         if (!na) { note("La dirección no puede quedar vacía."); return; }
         const moved = na !== cur.address;
         cur.address = na; if (nr) cur.ref = nr; else delete cur.ref;
+        const nt = $("editTel").value.trim(); if (nt) cur.tel = nt; else delete cur.tel;
         if ($("editExtra").value) cur.extra = $("editExtra").value; else delete cur.extra;
         await el._ph.save(cur);
         if (moved) { delete cur.lat; delete cur.lng; }
@@ -1629,7 +1651,7 @@ input:disabled { opacity: .45; }
     }
     el._it = it;
     $("editTitle").textContent = "Editar " + code(it.num);
-    $("editAddr").value = it.address; $("editRef").value = it.ref || ""; $("editNote").textContent = ""; setExtra($("editExtra"), it.extra || 0);
+    $("editAddr").value = it.address; $("editRef").value = it.ref || ""; $("editTel").value = it.tel || ""; $("editNote").textContent = ""; setExtra($("editExtra"), it.extra || 0);
     el._ph.reset(); if (it.photo) fotos.get(it.num).then(b => { if (el._it === it && b) el._ph.reset(b); });
     el.hidden = false; setTimeout(() => $("editAddr").focus(), 50);
   }
