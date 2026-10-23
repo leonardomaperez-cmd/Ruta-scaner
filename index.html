@@ -304,7 +304,7 @@ input:disabled { opacity: .45; }
   <div class="scan-bottom" id="scanControls">
     <button class="side" id="galleryBtn" type="button" aria-label="Elegir foto de la galería"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></button>
     <button class="shutter" id="shutter" type="button" aria-label="Tomar foto"></button>
-    <button class="side" id="manualBtn" type="button" aria-label="Escribir a mano"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></button>
+    <span class="side" aria-hidden="true" style="visibility:hidden"></span>
   </div>
   <input id="photo" type="file" accept="image/*" capture="environment" hidden>
   <input id="gallery" type="file" accept="image/*" hidden>
@@ -334,12 +334,10 @@ input:disabled { opacity: .45; }
   </div>
 </div>
 
-<button class="revbub" id="revBub" type="button" aria-label="Paquetes: revisar, referencia y foto">📝<b id="revCnt"></b></button>
-<section id="p-review" class="sheet" hidden aria-label="Revisar paquetes">
- <div class="sheet-head"><h2>Revisar paquete</h2><button class="x" type="button" data-close aria-label="Cerrar">✕</button></div>
- <p class="note" id="revEmpty">No hay nada para revisar. Lo que escanees aparece acá y, al tocar ✓ Listo, pasa a Paradas.</p>
- <div class="revnav" id="revNav" hidden><span id="revPos"></span></div>
- <div id="revList"></div>
+<button class="revbub" id="revBub" type="button" aria-label="Cargar una dirección a mano">📝<b id="revCnt"></b></button>
+<section id="p-review" class="sheet" hidden aria-label="Nueva dirección">
+ <div class="sheet-head"><h2>Nueva dirección</h2><button class="x" type="button" data-close aria-label="Cerrar">✕</button></div>
+  <div id="revList"></div>
 </section>
 <div class="backdrop" id="backdrop" hidden></div>
   <section id="p-stops" class="sheet" hidden aria-label="Paradas">
@@ -450,6 +448,7 @@ input:disabled { opacity: .45; }
 
   // items: {num, address, createdAt, lat?, lng?, done?}; route: {order:[num], summary, line:[[lat,lng]], start:{lat,lng}}
   let items = store.get("items", []);
+  if (items.some(it => it.review)) { items = items.filter(it => !it.review || it.address); items.forEach(it => { delete it.review; delete it.alt; }); store.set("items", items); }
   let route = store.get("route", null);
   const save = () => { store.set("items", items); store.set("route", route); };
   const nextNum = () => items.reduce((m, it) => Math.max(m, it.num), 0) + 1;
@@ -1237,14 +1236,8 @@ input:disabled { opacity: .45; }
     return true;
   }
   ["photo", "gallery"].forEach(id => $(id).addEventListener("change", e => { const f = e.target.files[0]; if (f) scanToItem(f); e.target.value = ""; }));
-  // a mano: crea un paquete vacío y abre su tarjeta en la burbuja 📝
-  $("manualBtn").addEventListener("click", () => {
-    const it = { num: nextNum(), address: "", createdAt: new Date().toISOString(), review: true };
-    items.push(it); save(); closeScanner(); revCur = it.num; showTab("p-review");
-    const c = revCards.get(it.num); if (c) { c.scrollIntoView({ block: "start" }); c.querySelector("textarea").focus(); }
-  });
   
-  // ---------- escaneo rápido: cada etiqueta se guarda sola y se revisa después desde la burbuja 📝 del mapa ----------
+  // ---------- escaneo: cada etiqueta se guarda sola y va directo a Paradas ----------
   let reading = 0;
   const scanIdle = "Encuadra la dirección dentro del recuadro y toca el botón";
   const scanBusy = () => { $("scanHint").textContent = reading ? "Leyendo " + reading + (reading === 1 ? " etiqueta…" : " etiquetas…") + " Podés seguir escaneando." : scanIdle; };
@@ -1276,20 +1269,21 @@ input:disabled { opacity: .45; }
       if (known) { $("stage").hidden = false; $("previewBox").hidden = true; $("lines").hidden = true; $("scanControls").hidden = true; showVerify(known); return; }
     }
     // el número se reserva ya, así dos etiquetas seguidas no se pisan
-    const it = { num: nextNum(), address: "", createdAt: new Date().toISOString(), review: true }; if (qr) it.qr = qr;
-    items.push(it); save(); refresh(false);
+    const it = { num: nextNum(), address: "", createdAt: new Date().toISOString() }; if (qr) it.qr = qr;
+    items.push(it); save();
     reading++; scanBusy();
     try {
       const r = await readLabel(file);
-      it.address = r.address; it.read = r.address; if (r.ref) it.ref = r.ref; if (r.alt) it.alt = r.alt;
+      if (!r.address) { items = items.filter(x => x !== it); save(); refresh(false); toast("No leí la dirección. Probá de nuevo con la etiqueta más cerca.", true); return; }
+      it.address = r.address; if (r.ref) it.ref = r.ref;
       save(); refresh(false);
-      toast(r.address ? "✓ " + code(it.num) + " · " + r.address : code(it.num) + ": no leí la dirección, revisala en 📝", !r.address);
-      if (r.address) { try { const g = await geocode(r.address, $("keyInput").value.trim()); if (g) { it.lat = g.lat; it.lng = g.lng; save(); refresh(false); } } catch {} }
-    } catch (e) { toast(code(it.num) + ": no se pudo leer (" + (e.message || e) + "). Revisala en 📝", true); }
+      toast("✓ " + code(it.num) + " · " + r.address);
+      { try { const g = await geocode(r.address, $("keyInput").value.trim()); if (g) { it.lat = g.lat; it.lng = g.lng; save(); refresh(false); } } catch {} }
+    } catch (e) { items = items.filter(x => x !== it); save(); refresh(false); toast("No se pudo leer la etiqueta (" + (e.message || e) + ")", true); }
     finally { reading--; scanBusy(); }
   }
 
-  // Burbuja 📝 del mapa: tocarla abre los paquetes escaneados para revisar; arrastrarla la mueve.
+  // Burbuja 📝 del mapa: tocarla abre el formulario para cargar una dirección a mano; arrastrarla la mueve.
   (() => {
     const bub = $("revBub"), pos = store.get("revBubPos", null);
     const place = (x, y) => { x = Math.max(8, Math.min(innerWidth - 60, x)); y = Math.max(60, Math.min(innerHeight - 160, y)); bub.style.left = x + "px"; bub.style.top = y + "px"; bub.style.right = "auto"; return [x, y]; };
@@ -1300,14 +1294,14 @@ input:disabled { opacity: .45; }
       if (!st || (!st.moved && Math.hypot(e.clientX - st.x, e.clientY - st.y) < 8)) return;
       st.moved = true; bub.classList.add("drag"); st.last = place(e.clientX - st.ox, e.clientY - st.oy);
     });
-    bub.addEventListener("pointerup", () => { if (!st) return; if (st.moved) { bub.classList.remove("drag"); if (st.last) store.set("revBubPos", st.last); } else { revCur = null; showTab("p-review"); } st = null; });
+    bub.addEventListener("pointerup", () => { if (!st) return; if (st.moved) { bub.classList.remove("drag"); if (st.last) store.set("revBubPos", st.last); } else showTab("p-review"); st = null; });
     bub.addEventListener("pointercancel", () => { st = null; bub.classList.remove("drag"); });
   })();
 
-  // Tarjetas de revisión: dirección, referencia (con voz), +1…+5 y foto del paquete con su código.
-  const revCards = new Map();
+  // Formulario de dirección: dirección, referencia (con voz), +1…+5 y foto del paquete con su código.
   function reviewCard(it) {
-    const c = document.createElement("div"); c.className = "rcard" + (it.review ? "" : " ok");
+    const isNew = !items.includes(it);
+    const c = document.createElement("div"); c.className = "rcard";
     const stop = route ? route.order.indexOf(it.num) + 1 : 0;
     c.innerHTML = `<div class="rhead"><b></b><span></span></div>
       <label class="label">Dirección</label><textarea rows="2" data-f="addr"></textarea>
@@ -1318,8 +1312,9 @@ input:disabled { opacity: .45; }
       <label class="label">Foto del paquete entero (para reconocerlo)</label><div class="photorow"><button class="btn" type="button" data-f="pbtn">📷 Sacar foto del paquete</button><img alt="Foto del paquete" data-f="pimg" hidden><button class="mini" type="button" data-f="pdel" hidden>Quitar</button></div><input type="file" accept="image/*" capture="environment" hidden data-f="pin">
       <div class="rbtns"><button class="btn" type="button" data-f="del">Borrar</button><button class="btn btn-primary" type="button" data-f="ok">✓ Listo</button></div>`;
     const f = (k) => c.querySelector(`[data-f="${k}"]`);
-    c.querySelector(".rhead b").textContent = code(it.num);
-    c.querySelector(".rhead span").textContent = (stop ? "Parada " + stop + " · " : "") + (it.address ? (it.review ? "para revisar" : "") : "sin dirección");
+    c.querySelector(".rhead b").textContent = code(isNew ? nextNum() : it.num);
+    c.querySelector(".rhead span").textContent = isNew ? "código del próximo paquete" : (stop ? "Parada " + stop : "");
+    if (isNew) { f("del").textContent = "Limpiar"; f("ok").textContent = "Guardar"; }
     f("addr").value = it.address; f("ref").value = it.ref || "";
     suggestFor(f("addr"));
     if (it.alt) { f("alt").hidden = false; f("alt").textContent = "El lector del teléfono leyó otra cosa: usar «" + it.alt + "»"; f("alt").addEventListener("click", () => { f("addr").value = it.alt; f("alt").hidden = true; }); }
@@ -1329,6 +1324,7 @@ input:disabled { opacity: .45; }
     const ph = photoPicker(f("pbtn"), f("pimg"), f("pdel"), f("pin"));
     if (it.photo) fotos.get(it.num).then(b => { if (b) ph.reset(b); });
     f("del").addEventListener("click", () => {
+      if (isNew) { revDraft = null; renderReview(); return; }
       if (!f("del").dataset.sure) { f("del").dataset.sure = "1"; f("del").textContent = "¿Seguro?"; f("del").classList.add("confirm"); return; }
       removeItem(it); toast(code(it.num) + " eliminada");
     });
@@ -1336,6 +1332,7 @@ input:disabled { opacity: .45; }
       stopMic();
       const na = f("addr").value.replace(/\s+/g, " ").trim(), nr = f("ref").value.replace(/\s+/g, " ").trim();
       if (!na) { note("Escribí la dirección antes de guardar."); f("addr").focus(); return; }
+      if (isNew) { it.num = nextNum(); it.createdAt = new Date().toISOString(); items.push(it); revDraft = null; }
       const moved = na !== it.address;
       if (it.read && na !== it.read) rememberFix(it.read, na);
       it.address = na; if (nr) it.ref = nr; else delete it.ref;
@@ -1343,37 +1340,19 @@ input:disabled { opacity: .45; }
       await ph.save(it);
       delete it.review; delete it.alt; delete it.read;
       if (moved) { delete it.lat; delete it.lng; }
-      revCur = null;
-      save(); refresh(false); toast("✓ " + code(it.num) + " guardada");
+      save(); refresh(false); toast("✓ " + code(it.num) + " guardada en Paradas");
       if (moved || typeof it.lat !== "number") { try { const g = await geocode(na, $("keyInput").value.trim()); if (g) { it.lat = g.lat; it.lng = g.lng; save(); refresh(false); } else toast("No encontré " + code(it.num) + " en el mapa", true); } catch {} }
     });
     return c;
   }
+  // la burbuja tiene un formulario fijo para cargar una dirección nueva a mano
+  let revDraft = null;
   function renderReview() {
-    // solo lo escaneado sin revisar, de a uno; con «✓ Listo» pasa a Paradas
-    const list = items.filter(it => it.review).sort((a, b) => a.num - b.num);
-    $("revCnt").textContent = items.filter(it => it.review).length || "";
-    if ($("p-review").hidden) { revCards.clear(); $("revList").textContent = ""; return; }
-    revList = list;
-    let i = list.findIndex(it => it.num === revCur); if (i < 0) i = 0;
-    const cur = list[i];
-    $("revList").textContent = "";
-    const keep = new Set(list.map(it => it.num));
-    revCards.forEach((c, n) => { if (!keep.has(n)) { c.remove(); revCards.delete(n); } });
-    (cur ? [cur] : []).forEach(it => {
-      let c = revCards.get(it.num);
-      if (!c || c.classList.contains("ok") === !!it.review) { const n = reviewCard(it); if (c) c.replaceWith(n); c = n; revCards.set(it.num, c); }
-      else if (it.address && !c.querySelector('[data-f="addr"]').value && document.activeElement !== c.querySelector('[data-f="addr"]')) {
-        // terminó de leerse mientras la tarjeta estaba abierta: se rearma con lo leído
-        const n = reviewCard(it); c.replaceWith(n); revCards.set(it.num, n); c = n;
-      }
-      $("revList").append(c);
-    });
-    $("revEmpty").hidden = list.length > 0;
-    revCur = cur ? cur.num : null;
-    $("revNav").hidden = list.length < 2; $("revPos").textContent = "Quedan " + list.length + " para revisar";
+    $("revCnt").textContent = "";
+    if ($("p-review").hidden) return;
+    if (!revDraft) { revDraft = { address: "" }; $("revList").textContent = ""; $("revList").append(reviewCard(revDraft)); }
+    else $("revList").querySelector(".rhead b").textContent = code(nextNum());
   }
-  let revCur = null, revList = [];
 
   function toast(m, bad) {
     if ($("scanner").hidden) { const mt = $("mapToast"); mt.textContent = m; mt.style.color = bad ? "#ff8a80" : "#fff"; mt.hidden = false; clearTimeout(toast.m); toast.m = setTimeout(() => mt.hidden = true, 3000); return; }
