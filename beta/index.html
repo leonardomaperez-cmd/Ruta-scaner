@@ -359,6 +359,7 @@ input:disabled { opacity: .45; }
       <label class="label" for="keyInput">Clave de TomTom (opcional)</label>
       <input id="keyInput" type="password" autocomplete="off" placeholder="Pega tu clave (API key)">
       <span class="note">Sin clave, la app usa mapas gratuitos de OpenStreetMap para ubicar y ordenar las paradas, sin cuenta. Con una clave de TomTom (gratis en developer.tomtom.com) la ruta tiene en cuenta el tráfico. Se guarda solo en este teléfono.</span>
+      <div id="aiBox" hidden><!-- lectura con IA apagada por ahora: se lee solo con el OCR del teléfono -->
       <label class="label" for="aiSel">Inteligencia artificial que lee la etiqueta</label>
       <select id="aiSel"><option value="gemini">Gemini de Google</option><option value="llama">Qwen por Groq (de pago)</option></select>
       <div id="llamaBox">
@@ -370,6 +371,7 @@ input:disabled { opacity: .45; }
       <label class="label" for="geminiInput">Clave de Gemini (lectura con inteligencia artificial)</label>
       <input id="geminiInput" type="password" autocomplete="off" placeholder="Pega tu clave de Google AI Studio">
       <span class="note">Opcional y gratis en aistudio.google.com. Con ella, la foto la lee Gemini y saca solo la dirección del destinatario. Sin ella, se lee en el teléfono. En el plan gratuito Google puede usar las fotos para mejorar sus productos.</span>
+      </div>
       </div>
       <label class="label" for="startInput">Punto de partida</label>
       <input id="startInput" type="text" placeholder="Vacío = desde donde estés al optimizar">
@@ -1252,10 +1254,12 @@ input:disabled { opacity: .45; }
   const scanIdle = "Encuadra la dirección dentro del recuadro y toca el botón";
   const scanBusy = () => { $("scanHint").textContent = reading ? "Leyendo " + reading + (reading === 1 ? " etiqueta…" : " etiquetas…") + " Podés seguir escaneando." : scanIdle; };
   // Lee la etiqueta: en Android ML Kit primero; si no cierra, la IA elegida; si no hay, el lector del teléfono.
+  // Por ahora la etiqueta se lee solo con el OCR del teléfono (ML Kit en la APK, Tesseract en la web). true vuelve a usar la IA.
+  const AI_ON = false;
   async function readLabel(file) {
     const aiv = $("aiSel").value, useAlt = aiv !== "gemini", AI = { llama: "Qwen" }[aiv] || "Gemini";
-    const ownKey = $({ llama: "groqInput" }[aiv] || "geminiInput").value.trim(), gkey = ownKey || (!useAlt && window.leerEnServidor ? "servidor" : "");
-    const ML = plug("LectorTexto") && !$("geminiAlwaysChk").checked;
+    const ownKey = $({ llama: "groqInput" }[aiv] || "geminiInput").value.trim(), gkey = AI_ON ? ownKey || (!useAlt && window.leerEnServidor ? "servidor" : "") : "";
+    const ML = plug("LectorTexto") && !(AI_ON && $("geminiAlwaysChk").checked);
     const ocrP = (ML ? shrink(file, 2000, false) : shrink(file)).then(img => readText(img, () => {})).catch(() => null);
     if (ML) { const o = solidRead(await ocrP); if (o) return { address: o, by: "ML Kit" }; }
     if (gkey) {
@@ -1988,7 +1992,7 @@ input:disabled { opacity: .45; }
   $("aiSel").addEventListener("change", () => { store.set("ai", $("aiSel").value); aiSync(); });
   $("geminiAlwaysChk").checked = store.get("geminiAlways", false);
   $("geminiAlwaysChk").addEventListener("change", () => store.set("geminiAlways", $("geminiAlwaysChk").checked));
-  $("geminiAlwaysBox").hidden = !plug("LectorTexto");
+  $("geminiAlwaysBox").hidden = !AI_ON || !plug("LectorTexto");
   $("zaChk").checked = store.get("za", true);
   $("zaChk").addEventListener("change", () => { store.set("za", $("zaChk").checked); refresh(false); });
   // ---------- app de Android: pide todos los permisos juntos la primera vez ----------
