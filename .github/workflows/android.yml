@@ -57,18 +57,36 @@ jobs:
           cp -r res/* android/app/src/main/res/
           npx cap sync android
 
+      # llave de firma: protegida con la contraseña del secreto ANDROID_KEYSTORE_PASSWORD (Settings > Secrets > Actions).
+      # La primera vez la crea y la guarda en el repo; sin la contraseña no sirve para nada.
+      - name: Llave de firma
+        env:
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ ${#KS_PASS} -lt 16 ]; then echo "::error::Falta el secreto ANDROID_KEYSTORE_PASSWORD (16 caracteres o más) en Settings > Secrets and variables > Actions"; exit 1; fi
+          if [ ! -f firma.keystore ]; then
+            keytool -genkeypair -keystore firma.keystore -storetype PKCS12 -alias ruta -keyalg RSA -keysize 4096 -validity 10000 \
+              -storepass "$KS_PASS" -keypass "$KS_PASS" -dname "CN=Ruta Escaner, C=AR"
+            git config user.name "github-actions[bot]"; git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add firma.keystore && git commit -m "Llave de firma nueva del APK (protegida con contraseña)"
+            git pull --rebase origin main && git push origin HEAD:main
+          fi
+          keytool -list -keystore firma.keystore -storepass "$KS_PASS" >/dev/null
+
       - name: Armar el APK
         working-directory: capacitor/android
+        env:
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
           cat >> app/build.gradle <<'GRADLE'
 
           android {
               signingConfigs {
                   ruta {
-                      storeFile file("../../ruta-escaner.keystore")
-                      storePassword "rutaescaner"
+                      storeFile file("../../firma.keystore")
+                      storePassword System.getenv("KS_PASS")
                       keyAlias "ruta"
-                      keyPassword "rutaescaner"
+                      keyPassword System.getenv("KS_PASS")
                   }
               }
               defaultConfig {
