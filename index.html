@@ -378,6 +378,7 @@ input:disabled { opacity: .45; }
 </section>
 <div class="backdrop" id="backdrop" hidden></div>
 <div id="pkCard" hidden></div>
+<input id="cargaPhoto" type="file" accept="image/*" capture="environment" hidden>
 <div id="cGhost" class="cst" hidden></div>
   <section id="p-stops" class="sheet" hidden aria-label="Paradas">
    <div class="sheet-head"><h2>Paradas</h2><button class="x" type="button" data-close aria-label="Cerrar">✕</button></div>
@@ -703,6 +704,7 @@ input:disabled { opacity: .45; }
 
   function removeItem(it) {
     if (it.photo) fotos.del(it.num);
+    if (it.cfoto) fotos.del("c" + it.num);
     if (route) { cutAround(it); route.order = route.order.filter(n => n !== it.num); }
     items = items.filter(x => x.num !== it.num);
     save(); refresh(false);
@@ -788,7 +790,7 @@ input:disabled { opacity: .45; }
         ${it.extra ? `<div><span class="xtra" style="margin:0">+${it.extra}</span> ${it.extra === 1 ? "1 paquete más" : it.extra + " paquetes más"} en esta dirección</div>` : ""}
         ${it.ref ? `<div class="pref">🗒 ${esc(it.ref)}</div>` : `<div class="muted">Sin referencia</div>`}
         ${it.done ? "<div>✓ Entregada</div>" : ""}
-        ${it.photo ? '<img class="pkmini" alt="Foto del paquete" hidden>' : ""}
+        ${it.photo || it.cfoto ? '<img class="pkmini" alt="Foto del paquete" hidden>' : ""}
         <div class="pacts"><a class="mini" href="${gmaps(it)}" target="_blank" rel="noopener">Navegar</a>
         ${it.tel ? `<a class="mini" href="${esc(waLink(it))}" target="_blank" rel="noopener">💬 WhatsApp</a><a class="mini" href="${esc(telLink(it))}">📞 Llamar</a>` : ""}
         <button class="mini" type="button" data-a="edit">Editar</button>
@@ -796,7 +798,7 @@ input:disabled { opacity: .45; }
         <button class="mini" type="button" data-a="del">Eliminar</button></div>`;
       d.querySelector('[data-a="edit"]').addEventListener("click", () => { map.closePopup(); openEdit(it); });
       const pm = d.querySelector(".pkmini");
-      if (pm) { fotos.get(it.num).then(b => { if (b) { pm.src = URL.createObjectURL(b); pm.hidden = false; } }); pm.addEventListener("click", () => showPhoto(it)); }
+      if (pm) { fotos.get(it.photo ? it.num : "c" + it.num).then(b => { if (b) { pm.src = URL.createObjectURL(b); pm.hidden = false; } }); pm.addEventListener("click", () => showPhoto(it)); }
       d.querySelector('[data-a="done"]').addEventListener("click", () => { it.done = !it.done; save(); map.closePopup(); refresh(false); });
       d.querySelector('[data-a="del"]').addEventListener("click", (e) => {
         const b = e.currentTarget;
@@ -919,7 +921,7 @@ input:disabled { opacity: .45; }
           if (pendingDelete !== it.num) { pendingDelete = it.num; render(); return; }
           pendingDelete = null; openRow = null; removeItem(it);
         });
-        if (it.photo) { const ph = document.createElement("button"); ph.type = "button"; ph.innerHTML = '<span style="font-size:1.1rem">📷</span><span>Foto</span>'; ph.addEventListener("click", () => showPhoto(it)); acts.append(nav, see, ph, ed, del); }
+        if (it.photo || it.cfoto) { const ph = document.createElement("button"); ph.type = "button"; ph.innerHTML = '<span style="font-size:1.1rem">📷</span><span>Foto</span>'; ph.addEventListener("click", () => showPhoto(it)); acts.append(nav, see, ph, ed, del); }
         else acts.append(nav, see, ed, del);
         if (it.tel) {
           const wa = document.createElement("a"); wa.href = waLink(it); wa.target = "_blank"; wa.rel = "noopener"; wa.innerHTML = '<span style="font-size:1.1rem">💬</span><span>WhatsApp</span>';
@@ -1506,14 +1508,22 @@ input:disabled { opacity: .45; }
   })();
   // achica la foto para que no ocupe mucho (lado mayor 1200 px)
   const pkShrink = (f) => shrink(f, 1200, false);
+  // muestra la foto del paquete y, si hay, la del lugar donde quedó en el vehículo
   async function showPhoto(it) {
-    const b = await fotos.get(it.num); if (!b) { toast("No encontré la foto de este paquete", true); return; }
+    const b = it.photo ? await fotos.get(it.num) : null, c = it.cfoto ? await fotos.get("c" + it.num) : null;
+    if (!b && !c) { toast("No encontré la foto de este paquete", true); return; }
     const stop = route ? route.order.indexOf(it.num) + 1 : 0;
     const v = document.createElement("div"); v.className = "pkview";
-    const im = document.createElement("img"); im.src = URL.createObjectURL(b); im.alt = "Foto del paquete " + code(it.num);
+    const w = document.createElement("div"), urls = [];
+    [[b, "Paquete"], [c, "En el vehículo" + (CARGA_ON && zonaDe(it) ? ": " + zonaDe(it) : "")]].forEach(([bl, cap]) => {
+      if (!bl) return;
+      const im = document.createElement("img"); im.src = URL.createObjectURL(bl); urls.push(im.src); im.alt = cap + " " + code(it.num);
+      if (b && c) im.style.maxHeight = "36vh";
+      const t = document.createElement("p"); t.textContent = cap; t.style.margin = "4px 0 10px"; w.append(im, t);
+    });
     const p = document.createElement("p"); p.textContent = (stop ? "Parada " + stop + " · " : "") + code(it.num) + " · " + it.address;
-    const w = document.createElement("div"); w.append(im, p); v.append(w);
-    v.addEventListener("click", () => { URL.revokeObjectURL(im.src); v.remove(); });
+    w.append(p); v.append(w);
+    v.addEventListener("click", () => { urls.forEach(u => URL.revokeObjectURL(u)); v.remove(); });
     document.body.append(v);
   }
   // sección «Foto del paquete»: botón, miniatura y Quitar; devuelve el estado para guardar
@@ -2242,15 +2252,27 @@ input:disabled { opacity: .45; }
     t("muted", "N.º " + String(it.num).padStart(4, "0") + " · " + zonaLabel(cargaPlan().get(it.num)) + (it.extra ? " · " + (it.extra + 1) + " paquetes" : ""));
     t("", it.address).style.fontSize = "1.05rem";
     if (it.ref) t("muted", "🗒 " + it.ref);
-    const b = it.photo ? await fotos.get(it.num) : null;
-    if (b) { const im = document.createElement("img"); im.alt = "Foto del paquete " + code(it.num); im.src = URL.createObjectURL(b); d.append(im); }
-    else { const btn = t("btn", "📷 Sacar foto del paquete", "button"); btn.type = "button"; btn.addEventListener("click", () => { c.hidden = true; closeSheets(); openEdit(it); }); }
+    // dos fotos: el paquete (se saca al cargar la dirección) y el lugar donde quedó en el vehículo
+    const slot = async (key, has, title, onAdd, addTxt) => {
+      t("label", title);
+      const bl = has ? await fotos.get(key) : null;
+      if (bl) { const im = document.createElement("img"); im.alt = title + " " + code(it.num); im.src = URL.createObjectURL(bl); d.append(im); }
+      const btn = t("btn", bl ? "📷 Cambiar foto" : addTxt, "button"); btn.type = "button"; btn.addEventListener("click", onAdd);
+    };
+    await slot(it.num, it.photo, "Foto del paquete", () => { close(); closeSheets(); openEdit(it); }, "📷 Sacar foto del paquete");
+    await slot("c" + it.num, it.cfoto, "Foto en el vehículo", () => { cargaFor = it; $("cargaPhoto").click(); }, "📷 Sacar foto de dónde quedó");
     const x = t("btn", "Cerrar", "button"); x.type = "button";
-    const close = () => { const im = d.querySelector("img"); if (im) URL.revokeObjectURL(im.src); c.hidden = true; };
+    function close() { d.querySelectorAll("img").forEach(im => URL.revokeObjectURL(im.src)); c.hidden = true; }
     x.addEventListener("click", close);
     c.onclick = (e) => { if (e.target === c) close(); };
     c.innerHTML = ""; c.append(d); c.hidden = false;
   }
+  let cargaFor = null;
+  $("cargaPhoto").addEventListener("change", async () => {
+    const f = $("cargaPhoto").files && $("cargaPhoto").files[0], it = cargaFor; $("cargaPhoto").value = ""; cargaFor = null;
+    if (!f || !it) return;
+    try { await fotos.put("c" + it.num, await pkShrink(f)); it.cfoto = true; save(); renderCarga(); pkCard(it); } catch { toast("No se pudo guardar la foto", true); }
+  });
   // arrastrar: mantener apretado ~0,3 s, mover y soltar sobre otra zona (lista o dibujo)
   let cDrag = null, cHot = null;
   const cSetHot = (el) => { if (cHot) cHot.classList.remove("hot"); cHot = el; if (el) el.classList.add("hot"); };
@@ -2272,7 +2294,7 @@ input:disabled { opacity: .45; }
 
   $("finishLater").addEventListener("click", () => { $("finish").hidden = true; });
   function newRoute() {
-    items.forEach(i => { if (i.photo) fotos.del(i.num); });
+    items.forEach(i => { if (i.photo) fotos.del(i.num); if (i.cfoto) fotos.del("c" + i.num); });
     items = []; route = null; announced.clear(); arriveItem = null; $("arrive").hidden = true; $("finish").hidden = true;
     save(); refresh(true); toast("Ruta nueva: cargá las direcciones");
   }
@@ -2290,7 +2312,7 @@ input:disabled { opacity: .45; }
   });
   $("clearDone").addEventListener("click", () => {
     const n = items.filter(i => i.done).length; if (!n) { return; }
-    items.forEach(i => { if (i.done && i.photo) fotos.del(i.num); });
+    items.forEach(i => { if (i.done && i.photo) fotos.del(i.num); if (i.done && i.cfoto) fotos.del("c" + i.num); });
     items = items.filter(i => !i.done); if (route) route.order = route.order.filter(x => byNum(x)); save(); refresh(false);
   });
   $("exportBtn").addEventListener("click", () => {
