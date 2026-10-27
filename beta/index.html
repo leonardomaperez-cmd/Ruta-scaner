@@ -188,6 +188,7 @@ ol.stops li.done .dchk { background: var(--accent); border-color: transparent; c
 .sugg { margin: 4px 0 0; padding: 0; list-style: none; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; box-shadow: 0 6px 18px rgba(0,0,0,.12); }
 .sugg li { padding: 10px 12px; font: 500 .9rem var(--body); color: var(--ink); cursor: pointer; border-top: 1px solid var(--line); }
 .sugg li:first-child { border-top: 0; }
+.sugg li.src { padding: 4px 12px; font-size: .7rem; color: var(--muted); cursor: default; text-align: right; }
 .sugg li small { display: block; color: var(--muted); font-weight: 400; font-size: .78rem; }
 .sugg li:active, .sugg li.on { background: color-mix(in srgb, var(--accent, #006948) 12%, transparent); }
 input:disabled { opacity: .45; }
@@ -1527,6 +1528,11 @@ input:disabled { opacity: .45; }
     const cg = await geocodeCorner(text.replace(/\s+/g, " ").trim()); if (cg) return cg;
     text = splitBetween(text.replace(/\s+/g, " ").trim()).addr;
     const pk2 = picked.get(text); if (pk2) return pk2;
+    if (window.buscarEnServidor) {
+      const near = meLast || (map && map.getCenter && [map.getCenter().lat, map.getCenter().lng]);
+      const d = await window.buscarEnServidor("ubicar", text, near), h = d && d.resultados[0];
+      if (h) return { lat: h.lat, lng: h.lng, label: h.street + (h.place ? ", " + h.place : "") + " (© " + (FUENTES[d.fuente] || d.fuente) + ")" };
+    }
     if (!key) return geocodeOSM(text);
     const u = new URL("https://api.tomtom.com/search/2/geocode/" + encodeURIComponent(text) + ".json");
     u.searchParams.set("key", key); u.searchParams.set("limit", "1"); u.searchParams.set("language", "es-ES");
@@ -1599,6 +1605,7 @@ input:disabled { opacity: .45; }
 
   // ---------- sugerencias al escribir una dirección (Photon, de OpenStreetMap, gratis y sin clave) ----------
   const picked = new Map(); // dirección elegida de la lista → su ubicación, para no volver a buscarla
+  const FUENTES = { tomtom: "TomTom", here: "HERE", geoapify: "Geoapify", locationiq: "LocationIQ" };
   function suggestFor(input, onPick) {
     const box = document.createElement("ul"); box.className = "sugg"; box.hidden = true;
     (input.closest(".refrow") || input).after(box);
@@ -1611,14 +1618,25 @@ input:disabled { opacity: .45; }
       t = setTimeout(async () => {
         const my = ++seq;
         try {
+          const near = meLast || (map && map.getCenter && [map.getCenter().lat, map.getCenter().lng]);
+          const seen = new Set(), list = []; let fuente = "";
+          // con cuenta activa: TomTom, HERE, Geoapify o LocationIQ desde tu Supabase; si no hay, Photon
+          const d = window.buscarEnServidor ? await window.buscarEnServidor("sugerir", q, near) : null;
+          if (my !== seq) return;
+          if (d && d.resultados.length) {
+            fuente = FUENTES[d.fuente] || d.fuente;
+            d.resultados.forEach(h => {
+              const text = h.street + (h.place ? ", " + h.place : ""), key = text.toLowerCase();
+              if (seen.has(key)) return; seen.add(key);
+              list.push({ street: h.street, place: h.place, text, lat: h.lat, lng: h.lng });
+            });
+          } else {
           const u = new URL("https://photon.komoot.io/api/");
           u.searchParams.set("q", q); u.searchParams.set("limit", "8");
-          const near = meLast || (map && map.getCenter && [map.getCenter().lat, map.getCenter().lng]);
           if (near) { u.searchParams.set("lat", near[0].toFixed(4)); u.searchParams.set("lon", near[1].toFixed(4)); }
           const r = await fetch(u); if (!r.ok) throw new Error(r.status);
           const j = await r.json(); if (my !== seq) return;
           const cc = $("countryInput").value.trim().toUpperCase();
-          const seen = new Set(), list = [];
           (j.features || []).forEach(f => {
             const p = f.properties || {}, c = f.geometry && f.geometry.coordinates;
             if (!c || (/^[A-Z]{2}$/.test(cc) && p.countrycode && p.countrycode.toUpperCase() !== cc)) return;
@@ -1629,6 +1647,7 @@ input:disabled { opacity: .45; }
             if (seen.has(key)) return; seen.add(key);
             list.push({ street, place, text, lat: c[1], lng: c[0] });
           });
+          }
           box.textContent = "";
           list.slice(0, 5).forEach(o => {
             const li = document.createElement("li"); li.textContent = o.street;
@@ -1641,6 +1660,7 @@ input:disabled { opacity: .45; }
             });
             box.append(li);
           });
+          if (fuente && box.children.length) { const li = document.createElement("li"); li.className = "src"; li.textContent = "© " + fuente; box.append(li); }
           box.hidden = !box.children.length;
         } catch { hide(); }
       }, 350);
@@ -2114,6 +2134,18 @@ const CUENTA = {
       if (st === 429) throw new Error("se acabó el cupo de lecturas por ahora");
       if (st === 401 || st === 403) throw new Error("tu cuenta no está activa");
       throw new Error(msg || "el servidor de lectura no respondió");
+    };
+    // búsqueda de direcciones con las claves del dueño (función «buscar-direccion»); null = usar Photon/Nominatim
+    let buscarOff = false;
+    window.buscarEnServidor = async (tipo, q, near) => {
+      if (buscarOff) return null;
+      const body = { tipo, q, pais: (document.getElementById("countryInput").value || "AR").trim() };
+      if (near) { body.lat = Number(near[0]); body.lon = Number(near[1]); }
+      try {
+        const { data, error } = await sb.functions.invoke("buscar-direccion", { body });
+        if (error) { let st = 0; try { st = error.context.status; } catch {} if (st === 404 || st === 403 || st === 401) buscarOff = true; return null; }
+        return data && Array.isArray(data.resultados) ? data : null;
+      } catch { return null; }
     };
     const err = (e) => {
       const m = String(e && e.message || e);
