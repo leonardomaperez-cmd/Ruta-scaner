@@ -211,6 +211,16 @@ input:disabled { opacity: .45; }
 .segcall { display: flex; align-items: center; gap: 14px; text-decoration: none; color: #fff; border-radius: 14px; padding: 14px 16px; font: 700 1.1rem var(--display); min-height: 64px; }
 .segcall small { display: block; font: 500 .85rem var(--body); opacity: .9; }
 .segcall .n { margin-left: auto; font: 800 1.5rem var(--mono); }
+#panico { position: fixed; inset: 0; z-index: 2500; background: #000; display: grid; grid-template-rows: auto 1fr auto; color: #fff; }
+#panico[hidden] { display: none; }
+#panico video { width: 100%; height: 100%; object-fit: cover; min-height: 0; }
+#panico .top, #panico .bot { padding: calc(12px + var(--top)) 16px 12px; display: grid; gap: 6px; background: #b71c1c; }
+#panico .bot { padding: 12px 16px calc(16px + env(safe-area-inset-bottom, 0px)); background: #111; }
+#panico .rec { font: 800 1.2rem var(--display); }
+#panico .rec::before { content: "● "; color: #fff; animation: vozpulse 1s infinite; }
+.grabs { display: grid; gap: 6px; }
+.grabs .g { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: .9rem; }
+.grabs .g span { flex: 1; }
 .vozbub { position: fixed; left: 12px; top: calc(50% - 30px); z-index: 520; width: 52px; height: 52px; border-radius: 50%; border: 0; padding: 0; background: var(--surface); box-shadow: 0 4px 14px rgba(0,0,0,.35); touch-action: none; cursor: pointer; overflow: visible; }
 .vozbub img { width: 100%; height: 100%; border-radius: 50%; display: block; pointer-events: none; }
 .vozbub.drag { transform: scale(1.1); cursor: grabbing; }
@@ -389,6 +399,7 @@ input:disabled { opacity: .45; }
 <button class="segbtn" id="segBtn" type="button" aria-label="Seguridad y emergencias" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M12 8v5M12 16h.01"/></svg></button>
 <button class="vozbub" id="vozBub" type="button" aria-label="Asistente de voz: tocá y hablá" hidden><img alt=""></button>
 <div id="vozMsg" role="status" hidden></div>
+<div id="panico" hidden><div class="top"><div class="rec" id="panicoRec">Grabando 00:00</div><div id="panicoUp">Subiendo a la nube…</div></div><video id="panicoCam" playsinline muted autoplay></video><div class="bot"><button class="btn" id="panicoStop" type="button" style="background:#fff;color:#111">⏹ Terminar grabación</button></div></div>
 <section id="p-review" class="sheet" hidden aria-label="Nueva dirección">
  <div class="sheet-head"><h2>Nueva dirección</h2><button class="x" type="button" data-close aria-label="Cerrar">✕</button></div>
   <div id="revList"></div>
@@ -447,6 +458,13 @@ input:disabled { opacity: .45; }
       <a class="segcall" href="tel:911" style="background:#c62828">🚓<span>Policía<small>Emergencias</small></span><span class="n">911</span></a>
       <a class="segcall" href="tel:107" style="background:#1565c0">🚑<span>Ambulancia<small>SAME / emergencias médicas</small></span><span class="n">107</span></a>
       <a class="segcall" href="tel:100" style="background:#e65100">🚒<span>Bomberos</span><span class="n">100</span></a>
+    </div>
+    <div class="card" id="panicoCard" hidden>
+      <h3 style="margin:0">Modo pánico</h3>
+      <span class="note">Graba video y audio con la cámara de atrás y lo sube a la nube cada 5 segundos. Si te sacan el teléfono, lo grabado ya queda guardado y lo podés descargar desde tu cuenta.</span>
+      <button class="segcall" id="panicoGo" type="button" style="background:#b71c1c;border:0;width:100%;cursor:pointer">🔴<span>Grabar emergencia<small>Se detiene sola a los 10 minutos</small></span></button>
+      <h4 style="margin:6px 0 0">Mis grabaciones</h4>
+      <div class="grabs" id="grabList"><span class="note">Cargando…</span></div>
     </div>
    </div>
   </section>
@@ -2413,7 +2431,76 @@ input:disabled { opacity: .45; }
   if (CARGA_ON) $("fabCarga").hidden = false;
   // botón fijo del escudo: abre Seguridad con las llamadas de emergencia
   const SEG_ON = true;
-  if (SEG_ON) { $("segBtn").hidden = false; $("segBtn").addEventListener("click", () => showTab("p-seg")); }
+  if (SEG_ON) { $("segBtn").hidden = false; $("segBtn").addEventListener("click", () => { showTab("p-seg"); panicoPanel(); }); }
+
+  // ---------- modo pánico: graba y sube a Supabase Storage (carpeta del chofer) cada 5 segundos ----------
+  // Los pedazos se guardan como <usuario>/<fecha>/parte-NNNN.webm; juntos en orden forman el video.
+  const PANICO_MAX = 10 * 60 * 1000;
+  let pan = null;
+  async function panicoUser() { try { const { data } = await window.sbClient.auth.getUser(); return data && data.user; } catch { return null; } }
+  async function panicoPanel() {
+    const ok = SEG_ON && window.sbClient && "MediaRecorder" in window && navigator.mediaDevices;
+    $("panicoCard").hidden = !ok; if (!ok) return;
+    const u = await panicoUser(), box = $("grabList");
+    if (!u) { box.innerHTML = '<span class="note">Entrá con tu cuenta para guardar grabaciones.</span>'; return; }
+    const { data, error } = await window.sbClient.storage.from("grabaciones").list(u.id, { limit: 50, sortBy: { column: "name", order: "desc" } });
+    box.innerHTML = "";
+    if (error) { box.innerHTML = '<span class="note">No se pudieron cargar las grabaciones.</span>'; return; }
+    const dirs = (data || []).filter(x => !x.id);
+    if (!dirs.length) { box.innerHTML = '<span class="note">Todavía no hay grabaciones.</span>'; return; }
+    dirs.forEach(d => {
+      const row = document.createElement("div"); row.className = "g";
+      const t = document.createElement("span"); t.textContent = d.name.replace(/^(\d{4})-(\d\d)-(\d\d)_(\d\d)-(\d\d)-(\d\d)$/, "$3/$2/$1 $4:$5");
+      const b = document.createElement("button"); b.className = "mini"; b.type = "button"; b.textContent = "⬇ Descargar";
+      b.addEventListener("click", () => panicoBajar(u.id, d.name, b));
+      row.append(t, b); box.append(row);
+    });
+  }
+  async function panicoBajar(uid, dir, btn) {
+    btn.disabled = true; btn.textContent = "Bajando…";
+    try {
+      const st = window.sbClient.storage.from("grabaciones");
+      const { data } = await st.list(uid + "/" + dir, { limit: 1000, sortBy: { column: "name", order: "asc" } });
+      const parts = [];
+      for (const f of data || []) { const r = await st.download(uid + "/" + dir + "/" + f.name); if (r.data) parts.push(r.data); }
+      if (!parts.length) throw 0;
+      const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(parts, { type: "video/webm" })); a.download = "grabacion-" + dir + ".webm";
+      document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    } catch { toast("No se pudo descargar la grabación", true); }
+    btn.disabled = false; btn.textContent = "⬇ Descargar";
+  }
+  async function panicoEmpezar() {
+    if (pan) return;
+    const u = await panicoUser(); if (!u) { toast("Entrá con tu cuenta para grabar", true); return; }
+    let stream;
+    try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 15 } }, audio: true }); }
+    catch { toast("Permití la cámara y el micrófono para grabar", true); return; }
+    const p2 = (n) => String(n).padStart(2, "0"), d = new Date();
+    const dir = d.getFullYear() + "-" + p2(d.getMonth() + 1) + "-" + p2(d.getDate()) + "_" + p2(d.getHours()) + "-" + p2(d.getMinutes()) + "-" + p2(d.getSeconds());
+    const type = ["video/webm;codecs=vp8,opus", "video/webm", "video/mp4"].find(t => MediaRecorder.isTypeSupported(t)) || "";
+    const rec = new MediaRecorder(stream, type ? { mimeType: type, videoBitsPerSecond: 400000, audioBitsPerSecond: 32000 } : {});
+    pan = { rec, stream, uid: u.id, dir, n: 0, up: 0, fail: 0, queue: [], busy: false, t0: Date.now(), ext: /mp4/.test(type) ? "mp4" : "webm" };
+    const subir = async () => {
+      const P = pan; if (!P || P.busy) return; P.busy = true;
+      while (P.queue.length) {
+        const [n, blob] = P.queue[0];
+        const { error } = await window.sbClient.storage.from("grabaciones").upload(P.uid + "/" + P.dir + "/parte-" + String(n).padStart(4, "0") + "." + P.ext, blob, { contentType: blob.type || "video/webm" });
+        if (error) { P.fail++; $("panicoUp").textContent = "Sin conexión: reintentando… (" + P.up + " subidos)"; await new Promise(r => setTimeout(r, 3000)); continue; }
+        P.queue.shift(); P.up++; $("panicoUp").textContent = "☁ " + P.up + " partes subidas";
+      }
+      P.busy = false; if (P.done && !P.queue.length) panicoCerrar();
+    };
+    rec.ondataavailable = (e) => { if (e.data && e.data.size) { pan.queue.push([pan.n++, e.data]); subir(); } };
+    rec.onstop = () => { stream.getTracks().forEach(t => t.stop()); pan.done = true; $("panicoUp").textContent = "Terminando de subir…"; if (!pan.queue.length && !pan.busy) panicoCerrar(); };
+    $("panicoCam").srcObject = stream; $("panico").hidden = false; closeSheets();
+    rec.start(5000);
+    pan.tick = setInterval(() => { const s = Math.floor((Date.now() - pan.t0) / 1000); $("panicoRec").textContent = "Grabando " + p2(Math.floor(s / 60)) + ":" + p2(s % 60); if (Date.now() - pan.t0 > PANICO_MAX) panicoParar(); }, 500);
+    if (navigator.vibrate) try { navigator.vibrate(200); } catch {}
+  }
+  function panicoParar() { if (!pan || pan.rec.state === "inactive") return; clearInterval(pan.tick); try { pan.rec.stop(); } catch {} }
+  function panicoCerrar() { const P = pan; pan = null; $("panico").hidden = true; $("panicoCam").srcObject = null; toast(P && P.up ? "Grabación guardada en la nube (" + P.up + " partes)" : "La grabación no se pudo subir", !(P && P.up)); }
+  $("panicoGo").addEventListener("click", panicoEmpezar);
+  $("panicoStop").addEventListener("click", panicoParar);
 
   $("finishLater").addEventListener("click", () => { $("finish").hidden = true; });
   function newRoute() {
@@ -2513,6 +2600,7 @@ const CUENTA = {
 
   function start() {
     const sb = window.supabase.createClient(CUENTA.supabaseUrl, CUENTA.supabaseAnonKey);
+    window.sbClient = sb; // lo usa el modo pánico para subir las grabaciones
     // lectura de etiquetas con la clave de Gemini del dueño, guardada en Supabase (función «leer-etiqueta»)
     window.leerEnServidor = async (body) => {
       const { data, error } = await sb.functions.invoke("leer-etiqueta", { body });
