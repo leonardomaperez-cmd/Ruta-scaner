@@ -231,7 +231,8 @@ input:disabled { opacity: .45; }
 #cargaSvg .zl { font: 600 12px var(--body); fill: var(--ink); }
 #cargaSvg .zb { fill: none; stroke: var(--muted); stroke-width: 2; }
 #cargaSvg .zt { font: 12px var(--body); fill: var(--muted); }
-#cargaSvg .pk { font-size: 17px; cursor: pointer; }
+#cargaSvg .pk { font-size: 17px; cursor: pointer; touch-action: none; -webkit-user-select: none; user-select: none; }
+#cargaSvg .pk.drag { opacity: .3; }
 #cargaSvg .z.hot .zr { stroke-width: 5; fill-opacity: .4; }
 .czs { border: 1px solid var(--line); border-radius: 12px; padding: 8px; display: grid; gap: 6px; }
 .czs.hot { outline: 2px solid var(--accent); }
@@ -410,7 +411,7 @@ input:disabled { opacity: .45; }
     </div>
     <div class="card">
       <h3 style="margin:0">Guía de carga</h3>
-      <span class="note">Lo primero que entregás queda a mano y lo último al fondo. Mantené apretada una dirección y arrastrala a otra zona (en la lista o sobre el dibujo): queda fija 📌 y las demás se reacomodan solas.</span>
+      <span class="note">Lo primero que entregás queda a mano y lo último al fondo. Mantené apretada una dirección y arrastrala a otra zona (en la lista o sobre el dibujo): queda fija 📌 y las demás quedan donde están.</span>
       <div id="cargaGuide" style="display:grid;gap:8px"></div>
       <button id="cargaReset" class="btn" type="button">Volver a la sugerencia</button>
     </div>
@@ -2228,14 +2229,14 @@ input:disabled { opacity: .45; }
       svgS += '</g>';
     });
     $("cargaSvg").innerHTML = svgS + '</svg>';
-    $("cargaSvg").querySelectorAll(".pk").forEach(t => t.addEventListener("click", () => pkCard(byNum(+t.dataset.n))));
+    $("cargaSvg").querySelectorAll(".pk").forEach(t => dragRow(t, () => pkCard(byNum(+t.dataset.n))));
     const g = $("cargaGuide"); g.innerHTML = "";
     v.zones.forEach(([k, lab]) => {
       const here = list.filter(it => plan.get(it.num) === k && !it.done);
       const sec = document.createElement("div"); sec.className = "czs"; sec.dataset.k = k;
       const h = document.createElement("h4"); h.innerHTML = '<span></span> <small>· ' + here.length + ' 📦</small>'; h.firstChild.textContent = lab; sec.append(h);
       here.forEach(it => {
-        const r = document.createElement("div"); r.className = "cst" + (it.zona ? " cpin" : ""); r.dataset.n = it.num; r.dataset.k = k;
+        const r = document.createElement("div"); r.className = "cst" + (it.zfija ? " cpin" : ""); r.dataset.n = it.num; r.dataset.k = k;
         const b = document.createElement("b"); b.textContent = stopTag(it); const sp = document.createElement("span"); sp.textContent = it.address;
         r.append(b, sp); sec.append(r); dragRow(r);
       });
@@ -2276,20 +2277,26 @@ input:disabled { opacity: .45; }
   // arrastrar: mantener apretado ~0,3 s, mover y soltar sobre otra zona (lista o dibujo)
   let cDrag = null, cHot = null;
   const cSetHot = (el) => { if (cHot) cHot.classList.remove("hot"); cHot = el; if (el) el.classList.add("hot"); };
-  function dragRow(r) {
-    let t = null, x0 = 0, y0 = 0;
+  // r: fila de la guía o 📦 del dibujo; onTap: toque corto (sin arrastrar)
+  function dragRow(r, onTap) {
+    let t = null, x0 = 0, y0 = 0, far = false;
     const move = (x, y) => { const gh = $("cGhost"); gh.style.left = (x - 120) + "px"; gh.style.top = (y - 24) + "px";
       const el = document.elementFromPoint(x, y); cSetHot(el ? (el.closest(".cst:not(.drag)") || el.closest(".czs") || el.closest("#cargaSvg .z")) : null); };
-    r.addEventListener("pointerdown", (e) => { x0 = e.clientX; y0 = e.clientY; try { r.setPointerCapture(e.pointerId); } catch {}
-      t = setTimeout(() => { cDrag = +r.dataset.n; r.classList.add("drag"); const gh = $("cGhost"); gh.innerHTML = r.innerHTML; gh.hidden = false; move(x0, y0); if (navigator.vibrate) try { navigator.vibrate(30); } catch {} }, 300); });
-    r.addEventListener("pointermove", (e) => { if (cDrag == null) { if (Math.hypot(e.clientX - x0, e.clientY - y0) > 8) clearTimeout(t); return; } move(e.clientX, e.clientY); });
-    const end = () => { clearTimeout(t); if (cDrag == null) return; const tg = cHot, it = byNum(cDrag); cSetHot(null); $("cGhost").hidden = true; cDrag = null;
-      if (tg && tg.dataset.k && it) { it.zona = tg.dataset.k; save(); $("cargaMsg").textContent = "Parada " + stopTag(it) + " guardada en " + zonaLabel(it.zona) + "."; }
+    r.addEventListener("pointerdown", (e) => { x0 = e.clientX; y0 = e.clientY; far = false; try { r.setPointerCapture(e.pointerId); } catch {}
+      t = setTimeout(() => { cDrag = +r.dataset.n; r.classList.add("drag"); const gh = $("cGhost");
+        if (r.tagName === "DIV") gh.innerHTML = r.innerHTML; else { const it = byNum(cDrag); gh.textContent = ""; const b = document.createElement("b"); b.textContent = "📦 " + stopTag(it); const sp = document.createElement("span"); sp.textContent = it.address; gh.append(b, sp); }
+        gh.hidden = false; move(x0, y0); if (navigator.vibrate) try { navigator.vibrate(30); } catch {} }, 300); });
+    r.addEventListener("pointermove", (e) => { if (cDrag == null) { if (Math.hypot(e.clientX - x0, e.clientY - y0) > 8) { far = true; clearTimeout(t); } return; } move(e.clientX, e.clientY); });
+    const end = (e) => { clearTimeout(t); if (cDrag == null) { if (onTap && !far && e.type === "pointerup") onTap(); return; } const tg = cHot, it = byNum(cDrag); cSetHot(null); $("cGhost").hidden = true; cDrag = null;
+      if (tg && tg.dataset.k && it) {
+        // al mover uno, los demás quedan donde están (ya están cargados en el vehículo)
+        const plan = cargaPlan(); items.forEach(x => { if (!x.zona && plan.has(x.num)) x.zona = plan.get(x.num); });
+        it.zona = tg.dataset.k; it.zfija = true; save(); $("cargaMsg").textContent = "Parada " + stopTag(it) + " guardada en " + zonaLabel(it.zona) + "."; }
       renderCarga(); };
     r.addEventListener("pointerup", end); r.addEventListener("pointercancel", end);
   }
   $("vehSel").addEventListener("change", () => { store.set("vehiculo", $("vehSel").value); renderCarga(); });
-  $("cargaReset").addEventListener("click", () => { items.forEach(it => delete it.zona); save(); $("cargaMsg").textContent = "Volviste a la sugerencia según el orden de la ruta."; renderCarga(); });
+  $("cargaReset").addEventListener("click", () => { items.forEach(it => { delete it.zona; delete it.zfija; }); save(); $("cargaMsg").textContent = "Volviste a la sugerencia según el orden de la ruta."; renderCarga(); });
   if (CARGA_ON) $("fabCarga").hidden = false;
 
   $("finishLater").addEventListener("click", () => { $("finish").hidden = true; });
