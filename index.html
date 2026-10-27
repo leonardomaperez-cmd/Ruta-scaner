@@ -652,8 +652,13 @@ input:disabled { opacity: .45; }
   function removeItem(it) {
     if (it.photo) fotos.del(it.num);
     items = items.filter(x => x.num !== it.num);
-    if (route) route.order = route.order.filter(n => n !== it.num);
+    if (route) { route.order = route.order.filter(n => n !== it.num); staleRoute(); }
     save(); refresh(false);
+  }
+  // después de corregir o borrar una parada, el camino verde ya no sirve: se oculta hasta volver a optimizar
+  function staleRoute() {
+    if (!route || route.stale) return;
+    route.stale = true; setTimeout(() => toast("Volvé a optimizar para ver el camino"), 1200);
   }
   // ---------- aviso al llegar: mensaje en pantalla y voz con la referencia ----------
   const announced = new Set(); let arriveItem = null;
@@ -756,7 +761,7 @@ input:disabled { opacity: .45; }
       .forEach(it => { if (typeof it.lat === "number") chain.push([it.lat, it.lng]); });
     const street = route && route.line && route.line.length > 1;
     const path = street ? route.line : chain;
-    if (path.length > 1) {
+    if (path.length > 1 && !(route && route.stale)) {
       L.polyline(path, { color: "#ffffff", weight: street ? 6 : 4, opacity: .95, lineCap: "round", lineJoin: "round" }).addTo(layer);
       L.polyline(path, { color: route ? "#00a572" : "#64748b", weight: street ? 3.5 : 2, opacity: 1, lineCap: "round", lineJoin: "round", dashArray: street ? null : "6 8" }).addTo(layer);
       // la luz recorre solo el tramo hasta la próxima parada (desde la anterior o desde la salida)
@@ -1743,7 +1748,7 @@ input:disabled { opacity: .45; }
         const nt = $("editTel").value.trim(); if (nt) cur.tel = nt; else delete cur.tel;
         if ($("editExtra").value) cur.extra = $("editExtra").value; else delete cur.extra;
         await el._ph.save(cur);
-        if (moved) { delete cur.lat; delete cur.lng; }
+        if (moved) { delete cur.lat; delete cur.lng; staleRoute(); }
         save(); el.hidden = true; refresh(false); toast(code(cur.num) + " actualizada");
         if (moved) { try { const g = await geocode(na, $("keyInput").value.trim()); if (g) { cur.lat = g.lat; cur.lng = g.lng; save(); refresh(false); } else toast("No encontré la nueva dirección en el mapa", true); } catch {} }
       });
