@@ -298,7 +298,7 @@ input:disabled { opacity: .45; }
 <div id="finish" role="alert" hidden>
   <div class="big">¡Ruta terminada!</div>
   <div id="finishInfo"></div>
-  <div class="row"><button class="btn btn-primary" id="finishNew" type="button">Empezar ruta nueva</button><button class="btn" id="finishLater" type="button">Todavía no</button></div>
+  <div class="row"><button class="btn btn-primary" id="finishNew" type="button">Armar nueva ruta</button><button class="btn" id="finishLater" type="button">Todavía no</button></div>
 </div>
 <div class="scanner" id="scanner" hidden>
   <video id="cam" playsinline muted autoplay></video>
@@ -360,6 +360,7 @@ input:disabled { opacity: .45; }
       <button id="exportBtn" class="btn" type="button">Exportar CSV</button>
       <button id="clearDone" class="btn" type="button">Quitar entregadas</button>
     </div>
+    <button id="newRoute" class="btn" type="button" style="width:100%;margin-top:8px">🔄 Armar nueva ruta</button>
    </div>
   </section>
 
@@ -2098,10 +2099,22 @@ input:disabled { opacity: .45; }
   $("arriveDist").addEventListener("change", () => store.set("arriveDist", $("arriveDist").value.trim()));
 
   $("finishLater").addEventListener("click", () => { $("finish").hidden = true; });
-  $("finishNew").addEventListener("click", () => {
+  function newRoute() {
     items.forEach(i => { if (i.photo) fotos.del(i.num); });
     items = []; route = null; announced.clear(); arriveItem = null; $("arrive").hidden = true; $("finish").hidden = true;
     save(); refresh(true); toast("Ruta nueva: cargá las direcciones");
+  }
+  $("finishNew").addEventListener("click", newRoute);
+  // botón en Paradas: si quedan paradas sin entregar, pide un segundo toque para confirmar
+  let newRouteT = 0;
+  $("newRoute").addEventListener("click", () => {
+    const b = $("newRoute"), left = items.filter(i => !i.done).length;
+    if (!items.length) { toast("La ruta ya está vacía"); return; }
+    if (left && Date.now() - newRouteT > 4000) {
+      newRouteT = Date.now(); b.textContent = "Quedan " + left + " sin entregar. Tocá de nuevo para borrar todo";
+      setTimeout(() => { if (Date.now() - newRouteT >= 4000) b.textContent = "🔄 Armar nueva ruta"; }, 4100); return;
+    }
+    newRouteT = 0; b.textContent = "🔄 Armar nueva ruta"; newRoute();
   });
   $("clearDone").addEventListener("click", () => {
     const n = items.filter(i => i.done).length; if (!n) { return; }
