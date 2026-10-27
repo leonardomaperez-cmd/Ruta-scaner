@@ -205,6 +205,12 @@ input:disabled { opacity: .45; }
 .pinx { position: absolute; top: -8px; right: -10px; min-width: 20px; height: 18px; padding: 0 4px; border-radius: 9px; background: #f59e0b; color: #1f1300; border: 2px solid #fff; font: 800 10px/14px "Space Grotesk", system-ui, sans-serif; text-align: center; font-style: normal; }
 .xtra { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: #f59e0b; color: #1f1300; font: 800 .78rem var(--display); vertical-align: 1px; }
 .revbub { position: fixed; right: 12px; top: calc(50% - 150px); z-index: 520; width: 52px; height: 52px; border-radius: 50%; border: 0; background: var(--surface); color: var(--ink); box-shadow: 0 4px 14px rgba(0,0,0,.35); display: grid; place-items: center; font-size: 22px; touch-action: none; cursor: pointer; }
+/* botón de seguridad (escudo) y sus llamadas de emergencia */
+.segbtn { position: fixed; top: calc(10px + var(--top)); left: 12px; z-index: 510; width: 44px; height: 44px; border-radius: 50%; border: 0; background: #c62828; color: #fff; box-shadow: 0 4px 14px rgba(0,0,0,.35); display: grid; place-items: center; cursor: pointer; }
+.segbtn svg { width: 24px; height: 24px; }
+.segcall { display: flex; align-items: center; gap: 14px; text-decoration: none; color: #fff; border-radius: 14px; padding: 14px 16px; font: 700 1.1rem var(--display); min-height: 64px; }
+.segcall small { display: block; font: 500 .85rem var(--body); opacity: .9; }
+.segcall .n { margin-left: auto; font: 800 1.5rem var(--mono); }
 .vozbub { position: fixed; left: 12px; top: calc(50% - 30px); z-index: 520; width: 52px; height: 52px; border-radius: 50%; border: 0; padding: 0; background: var(--surface); box-shadow: 0 4px 14px rgba(0,0,0,.35); touch-action: none; cursor: pointer; overflow: visible; }
 .vozbub img { width: 100%; height: 100%; border-radius: 50%; display: block; pointer-events: none; }
 .vozbub.drag { transform: scale(1.1); cursor: grabbing; }
@@ -380,6 +386,7 @@ input:disabled { opacity: .45; }
 </div>
 
 <button class="revbub" id="revBub" type="button" aria-label="Cargar una dirección a mano">📝<b id="revCnt"></b></button>
+<button class="segbtn" id="segBtn" type="button" aria-label="Seguridad y emergencias" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M12 8v5M12 16h.01"/></svg></button>
 <button class="vozbub" id="vozBub" type="button" aria-label="Asistente de voz: tocá y hablá" hidden><img alt=""></button>
 <div id="vozMsg" role="status" hidden></div>
 <section id="p-review" class="sheet" hidden aria-label="Nueva dirección">
@@ -429,6 +436,17 @@ input:disabled { opacity: .45; }
       <span class="note">Lo primero que entregás queda a mano y lo último al fondo. Mantené apretada una dirección y arrastrala a otra zona (en la lista o sobre el dibujo): queda fija 📌 y las demás quedan donde están.</span>
       <div id="cargaGuide" style="display:grid;gap:8px"></div>
       <button id="cargaReset" class="btn" type="button">Volver a la sugerencia</button>
+    </div>
+   </div>
+  </section>
+  <section id="p-seg" class="sheet" hidden aria-label="Seguridad">
+   <div class="sheet-head"><h2>Seguridad</h2><button class="x" type="button" data-close aria-label="Cerrar">✕</button></div>
+   <div class="wrap">
+    <div class="card">
+      <span class="note">Tocá para llamar. Se abre el teléfono con el número marcado.</span>
+      <a class="segcall" href="tel:911" style="background:#c62828">🚓<span>Policía<small>Emergencias</small></span><span class="n">911</span></a>
+      <a class="segcall" href="tel:107" style="background:#1565c0">🚑<span>Ambulancia<small>SAME / emergencias médicas</small></span><span class="n">107</span></a>
+      <a class="segcall" href="tel:100" style="background:#e65100">🚒<span>Bomberos</span><span class="n">100</span></a>
     </div>
    </div>
   </section>
@@ -2393,6 +2411,9 @@ input:disabled { opacity: .45; }
   $("vehSel").addEventListener("change", () => { store.set("vehiculo", $("vehSel").value); renderCarga(); });
   $("cargaReset").addEventListener("click", () => { items.forEach(it => { delete it.zona; delete it.zfija; }); save(); $("cargaMsg").textContent = "Volviste a la sugerencia según el orden de la ruta."; renderCarga(); });
   if (CARGA_ON) $("fabCarga").hidden = false;
+  // botón fijo del escudo: abre Seguridad con las llamadas de emergencia
+  const SEG_ON = false;
+  if (SEG_ON) { $("segBtn").hidden = false; $("segBtn").addEventListener("click", () => showTab("p-seg")); }
 
   $("finishLater").addEventListener("click", () => { $("finish").hidden = true; });
   function newRoute() {
