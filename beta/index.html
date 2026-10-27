@@ -402,9 +402,10 @@ input:disabled { opacity: .45; }
     </div>
     <ol class="stops" id="stops"></ol>
     <div class="row">
+      <button id="pdfBtn" class="btn" type="button">Exportar PDF</button>
       <button id="exportBtn" class="btn" type="button">Exportar CSV</button>
-      <button id="clearDone" class="btn" type="button">Quitar entregadas</button>
     </div>
+    <button id="clearDone" class="btn" type="button" style="width:100%;margin-top:8px">Quitar entregadas</button>
     <button id="newRoute" class="btn" type="button" style="width:100%;margin-top:8px">🔄 Armar nueva ruta</button>
    </div>
   </section>
@@ -2410,6 +2411,30 @@ input:disabled { opacity: .45; }
     const n = items.filter(i => i.done).length; if (!n) { return; }
     items.forEach(i => { if (i.done && i.photo) fotos.del(i.num); if (i.done && i.cfoto) fotos.del("c" + i.num); });
     items = items.filter(i => !i.done); if (route) route.order = route.order.filter(x => byNum(x)); save(); refresh(false);
+  });
+  // PDF de la lista de paradas (jsPDF se carga recién al tocar el botón)
+  const loadJs = (src) => new Promise((ok, no) => { if (document.querySelector('script[src="' + src + '"]')) return ok(); const sc = document.createElement("script"); sc.src = src; sc.onload = ok; sc.onerror = no; document.head.append(sc); });
+  $("pdfBtn").addEventListener("click", async () => {
+    const list = orderedItems().filter(it => !it.review);
+    if (!list.length) { toast("No hay paradas para exportar", true); return; }
+    $("pdfBtn").disabled = true; $("pdfBtn").textContent = "Armando el PDF…";
+    try {
+      await loadJs("https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js");
+      await loadJs("https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js");
+      const doc = new window.jspdf.jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+      const lt = letters(), withZone = CARGA_ON, now = new Date();
+      const pk = list.reduce((n, it) => n + 1 + (it.extra || 0), 0), given = list.filter(it => it.done).reduce((n, it) => n + 1 + (it.extra || 0), 0);
+      doc.setFontSize(16); doc.text("Ruta Escáner: paradas", 14, 15);
+      doc.setFontSize(10); doc.setTextColor(90);
+      doc.text(now.toLocaleDateString("es-AR") + " " + now.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" }) + "  ·  " + list.length + " paradas  ·  " + pk + " paquetes  ·  " + given + " entregados" + (route && route.summary ? "  ·  " + route.summary.replace(/\n/g, " · ") : ""), 14, 21);
+      const head = ["Parada", "Letra", "Código", "Dirección", "Referencia", "Paq.", "Teléfono"].concat(withZone ? ["Zona"] : [], ["Entregada"]);
+      const body = list.map(it => [route ? (route.order.indexOf(it.num) + 1 || "") : "", lt.get(it.num) || "", code(it.num), it.address, it.ref || "", 1 + (it.extra || 0), it.tel || ""]
+        .concat(withZone ? [zonaDe(it)] : [], [it.done ? "Sí" : ""]));
+      doc.autoTable({ head: [head], body, startY: 26, styles: { fontSize: 9, cellPadding: 2 }, headStyles: { fillColor: [0, 105, 72] },
+        columnStyles: { 3: { cellWidth: 70 }, 4: { cellWidth: 50 } }, alternateRowStyles: { fillColor: [242, 243, 255] } });
+      doc.save("paradas-" + now.toISOString().slice(0, 10) + ".pdf");
+    } catch { toast("No se pudo armar el PDF. Revisá tu internet.", true); }
+    finally { $("pdfBtn").disabled = false; $("pdfBtn").textContent = "Exportar PDF"; }
   });
   $("exportBtn").addEventListener("click", () => {
     const q = (s) => '"' + String(s).replace(/"/g, '""') + '"';
