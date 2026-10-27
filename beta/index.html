@@ -651,14 +651,27 @@ input:disabled { opacity: .45; }
 
   function removeItem(it) {
     if (it.photo) fotos.del(it.num);
+    if (route) { cutAround(it); route.order = route.order.filter(n => n !== it.num); }
     items = items.filter(x => x.num !== it.num);
-    if (route) { route.order = route.order.filter(n => n !== it.num); staleRoute(); }
     save(); refresh(false);
   }
-  // después de corregir o borrar una parada, el camino verde ya no sirve: se oculta hasta volver a optimizar
-  function staleRoute() {
-    if (!route || route.stale) return;
-    route.stale = true; setTimeout(() => toast("Volvé a optimizar para ver el camino"), 1200);
+  // Punto del camino más cercano a una parada, buscando desde «from» hacia adelante.
+  function nearIdx(path, p, from) { let bi = from, bd = Infinity; for (let i = from; i < path.length; i++) { const d = (path[i][0] - p.lat) ** 2 + (path[i][1] - p.lng) ** 2; if (d < bd) { bd = d; bi = i; } } return bi; }
+  // Al corregir o borrar una parada ya optimizada se ocultan solo sus dos tramos (desde la anterior y hasta la siguiente);
+  // el resto del camino queda. Hay que llamarla antes de cambiarle la ubicación o sacarla del orden.
+  function cutAround(it) {
+    if (!route || typeof it.lat !== "number") return;
+    const ord = route.order.map(byNum).filter(x => x && typeof x.lat === "number"), k = ord.indexOf(it);
+    if (k < 0) return;
+    if (!route.line || route.line.length < 2) {
+      route.line = (route.start ? [[route.start.lat, route.start.lng]] : []).concat(ord.map(x => [x.lat, x.lng])); route.straight = true;
+    }
+    const path = route.line, idx = [];
+    let from = route.start ? nearIdx(path, route.start, 0) : 0;
+    ord.forEach(x => { from = nearIdx(path, x, from); idx.push(from); });
+    const a = k > 0 ? idx[k - 1] : 0, b = k < ord.length - 1 ? idx[k + 1] : path.length - 1;
+    (route.hide = route.hide || []).push([a, b]);
+    setTimeout(() => toast("Volvé a optimizar para ver el camino completo"), 1200);
   }
   // ---------- aviso al llegar: mensaje en pantalla y voz con la referencia ----------
   const announced = new Set(); let arriveItem = null;
@@ -759,20 +772,28 @@ input:disabled { opacity: .45; }
     if (route && route.start) chain.push([route.start.lat, route.start.lng]);
     (route ? route.order.map(byNum).filter(Boolean) : items.slice().sort((a, b) => a.num - b.num))
       .forEach(it => { if (typeof it.lat === "number") chain.push([it.lat, it.lng]); });
-    const street = route && route.line && route.line.length > 1;
-    const path = street ? route.line : chain;
-    if (path.length > 1 && !(route && route.stale)) {
-      L.polyline(path, { color: "#ffffff", weight: street ? 6 : 4, opacity: .95, lineCap: "round", lineJoin: "round" }).addTo(layer);
-      L.polyline(path, { color: route ? "#00a572" : "#64748b", weight: street ? 3.5 : 2, opacity: 1, lineCap: "round", lineJoin: "round", dashArray: street ? null : "6 8" }).addTo(layer);
-      // la luz recorre solo el tramo hasta la próxima parada (desde la anterior o desde la salida)
+    const street = route && route.line && route.line.length > 1 && !route.straight;
+    const path = route && route.line && route.line.length > 1 ? route.line : chain;
+    // tramos ocultos por paradas corregidas o borradas: se dibujan solo los pedazos visibles
+    const hide = (route && route.hide) || [], segHidden = (i) => hide.some(([a, b]) => i - 1 >= a && i <= b);
+    const runs = []; let run = path.length ? [path[0]] : [];
+    for (let i = 1; i < path.length; i++) {
+      if (segHidden(i)) { if (run.length > 1) runs.push(run); run = [path[i]]; } else run.push(path[i]);
+    }
+    if (run.length > 1) runs.push(run);
+    runs.forEach(r => {
+      L.polyline(r, { color: "#ffffff", weight: street ? 6 : 4, opacity: .95, lineCap: "round", lineJoin: "round" }).addTo(layer);
+      L.polyline(r, { color: route ? "#00a572" : "#64748b", weight: street ? 3.5 : 2, opacity: 1, lineCap: "round", lineJoin: "round", dashArray: street ? null : "6 8" }).addTo(layer);
+    });
+    if (path.length > 1) {
+      // la luz recorre solo el tramo hasta la próxima parada (desde la anterior o desde la salida), si ese tramo se ve
       const nxt = route && nextStop();
       if (nxt) {
         const ord = route.order.map(byNum).filter(it => it && typeof it.lat === "number"), k = ord.indexOf(nxt);
         const prev = k > 0 ? ord[k - 1] : route.start;
-        const near = (p, from) => { let bi = from, bd = Infinity; for (let i = from; i < path.length; i++) { const d = (path[i][0] - p.lat) ** 2 + (path[i][1] - p.lng) ** 2; if (d < bd) { bd = d; bi = i; } } return bi; };
-        const i0 = prev ? near(prev, 0) : 0, i1 = near(nxt, i0);
-        const leg = path.slice(i0, i1 + 1);
-        if (leg.length > 1) L.polyline(leg, { color: "#eafff5", weight: street ? 5 : 4, opacity: 1, lineCap: "round", className: "flow", interactive: false }).addTo(layer);
+        const i0 = prev ? nearIdx(path, prev, 0) : 0, i1 = nearIdx(path, nxt, i0);
+        const leg = path.slice(i0, i1 + 1), cut = hide.some(([a, b]) => i0 < b && i1 > a);
+        if (leg.length > 1 && !cut) L.polyline(leg, { color: "#eafff5", weight: street ? 5 : 4, opacity: 1, lineCap: "round", className: "flow", interactive: false }).addTo(layer);
       }
     }
     if (route && route.start) {
@@ -1748,7 +1769,7 @@ input:disabled { opacity: .45; }
         const nt = $("editTel").value.trim(); if (nt) cur.tel = nt; else delete cur.tel;
         if ($("editExtra").value) cur.extra = $("editExtra").value; else delete cur.extra;
         await el._ph.save(cur);
-        if (moved) { delete cur.lat; delete cur.lng; staleRoute(); }
+        if (moved) { cutAround(cur); delete cur.lat; delete cur.lng; }
         save(); el.hidden = true; refresh(false); toast(code(cur.num) + " actualizada");
         if (moved) { try { const g = await geocode(na, $("keyInput").value.trim()); if (g) { cur.lat = g.lat; cur.lng = g.lng; save(); refresh(false); } else toast("No encontré la nueva dirección en el mapa", true); } catch {} }
       });
