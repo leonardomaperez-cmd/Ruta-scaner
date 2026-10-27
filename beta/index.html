@@ -111,6 +111,11 @@ body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--body); ov
 #arrive .ref { font-style: italic; }
 #arrive .row { display: flex; gap: 8px; }
 #arrive .row .btn { flex: 1; min-height: 42px; padding: 8px; }
+#finish { position: fixed; left: 12px; right: 12px; top: calc(56px + var(--top)); z-index: 975; background: #1b2335; border-left: 5px solid #85f8c4; color: #fff; border-radius: 16px; padding: 14px; box-shadow: 0 8px 24px rgba(0,0,0,.4); display: grid; gap: 8px; max-width: 520px; margin: 0 auto; }
+#finish[hidden] { display: none; }
+#finish .big { font: 700 1.6rem/1.1 var(--display); letter-spacing: -.01em; color: #85f8c4; }
+#finish .row { display: flex; gap: 8px; }
+#finish .row .btn { flex: 1; min-height: 42px; padding: 8px; }
 .checkmap { height: 170px; border-radius: 12px; border: 1px solid var(--line); overflow: hidden; }
 /* cuenta: registro, ingreso y pago */
 #auth { position: fixed; inset: 0; z-index: 2000; background: var(--bg); color: var(--ink); overflow-y: auto; padding: 24px 16px calc(24px + env(safe-area-inset-bottom, 0px)); }
@@ -289,6 +294,11 @@ input:disabled { opacity: .45; }
   <div id="arriveAddr"></div>
   <div class="ref" id="arriveRef"></div>
   <div class="row"><button class="btn" id="arriveSay" type="button">🔊 Repetir</button><button class="btn btn-primary" id="arriveDone" type="button">Entregada</button><button class="btn" id="arriveClose" type="button">Cerrar</button></div>
+</div>
+<div id="finish" role="alert" hidden>
+  <div class="big">¡Ruta terminada!</div>
+  <div id="finishInfo"></div>
+  <div class="row"><button class="btn btn-primary" id="finishNew" type="button">Empezar ruta nueva</button><button class="btn" id="finishLater" type="button">Todavía no</button></div>
 </div>
 <div class="scanner" id="scanner" hidden>
   <video id="cam" playsinline muted autoplay></video>
@@ -871,7 +881,19 @@ input:disabled { opacity: .45; }
       $("navAll").href = u.toString(); $("navAll").hidden = false;
     } else $("navAll").hidden = true;
   }
-  function refresh(fit) { render(); drawMap(fit); renderReview(); }
+  function refresh(fit) { render(); drawMap(fit); renderReview(); checkFinished(); }
+
+  // Ruta terminada: cuando todas las paradas están entregadas, ofrece empezar una ruta nueva desde cero
+  let finishSeen = false;
+  function checkFinished() {
+    const all = items.length > 0 && items.every(it => it.done);
+    if (!all) { finishSeen = false; $("finish").hidden = true; return; }
+    if (finishSeen) return;
+    finishSeen = true;
+    const pk = items.reduce((n, it) => n + 1 + (it.extra || 0), 0);
+    $("finishInfo").textContent = items.length + (items.length === 1 ? " parada" : " paradas") + " y " + pk + (pk === 1 ? " paquete entregado." : " paquetes entregados.") + " ¿Arrancamos una ruta nueva?";
+    $("finish").hidden = false;
+  }
 
   // ---------- escaneo (lectura en el teléfono) ----------
   async function shrink(file, max = 1800, gray = true) {
@@ -2075,6 +2097,12 @@ input:disabled { opacity: .45; }
   $("arriveDist").value = store.get("arriveDist", "150");
   $("arriveDist").addEventListener("change", () => store.set("arriveDist", $("arriveDist").value.trim()));
 
+  $("finishLater").addEventListener("click", () => { $("finish").hidden = true; });
+  $("finishNew").addEventListener("click", () => {
+    items.forEach(i => { if (i.photo) fotos.del(i.num); });
+    items = []; route = null; announced.clear(); arriveItem = null; $("arrive").hidden = true; $("finish").hidden = true;
+    save(); refresh(true); toast("Ruta nueva: cargá las direcciones");
+  });
   $("clearDone").addEventListener("click", () => {
     const n = items.filter(i => i.done).length; if (!n) { return; }
     items.forEach(i => { if (i.done && i.photo) fotos.del(i.num); });
