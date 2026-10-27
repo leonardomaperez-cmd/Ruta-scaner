@@ -221,6 +221,10 @@ input:disabled { opacity: .45; }
 .grabs { display: grid; gap: 6px; }
 .grabs .g { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: .9rem; }
 .grabs .g span { flex: 1; }
+.grabs .g small { display: block; color: var(--muted); font-size: .78rem; }
+#segRec { position: fixed; bottom: calc(108px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); z-index: 520; border: 0; border-radius: 999px; background: #b71c1c; color: #fff; font: 700 .9rem var(--display, inherit); padding: 8px 14px; box-shadow: 0 4px 14px rgba(0,0,0,.35); cursor: pointer; white-space: nowrap; }
+#segRec b { display: inline-block; animation: vozpulse 1s infinite; }
+.segbtn.rec { animation: vozpulse 1s infinite; }
 .vozbub { position: fixed; left: 12px; top: calc(50% - 30px); z-index: 520; width: 52px; height: 52px; border-radius: 50%; border: 0; padding: 0; background: var(--surface); box-shadow: 0 4px 14px rgba(0,0,0,.35); touch-action: none; cursor: pointer; overflow: visible; }
 .vozbub img { width: 100%; height: 100%; border-radius: 50%; display: block; pointer-events: none; }
 .vozbub.drag { transform: scale(1.1); cursor: grabbing; }
@@ -400,6 +404,7 @@ input:disabled { opacity: .45; }
 <button class="vozbub" id="vozBub" type="button" aria-label="Asistente de voz: tocá y hablá" hidden><img alt=""></button>
 <div id="vozMsg" role="status" hidden></div>
 <div id="panico" hidden><div class="top"><div class="rec" id="panicoRec">Grabando 00:00</div><div id="panicoUp">Subiendo a la nube…</div></div><video id="panicoCam" playsinline muted autoplay></video><div class="bot"><button class="btn" id="panicoStop" type="button" style="background:#fff;color:#111">⏹ Terminar grabación</button></div></div>
+<button id="segRec" type="button" hidden aria-label="Cortar grabación"><b>●</b> <span id="segRecTxt">Grabando</span> · ⏹</button>
 <section id="p-review" class="sheet" hidden aria-label="Nueva dirección">
  <div class="sheet-head"><h2>Nueva dirección</h2><button class="x" type="button" data-close aria-label="Cerrar">✕</button></div>
   <div id="revList"></div>
@@ -463,6 +468,9 @@ input:disabled { opacity: .45; }
       <h3 style="margin:0">Modo pánico</h3>
       <span class="note">Graba video y audio con la cámara de atrás y lo sube a la nube cada 5 segundos. Si te sacan el teléfono, lo grabado ya queda guardado y lo podés descargar desde tu cuenta.</span>
       <button class="segcall" id="panicoGo" type="button" style="background:#b71c1c;border:0;width:100%;cursor:pointer">🔴<span>Grabar emergencia<small>Se detiene sola a los 10 minutos</small></span></button>
+      <h4 style="margin:6px 0 0">Grabar al llegar a cada parada</h4>
+      <label class="check"><input id="segAutoChk" type="checkbox"> Doy el okey: grabar mientras esté a menos de <b id="segAutoM">150</b> m de una parada</label>
+      <span class="note">Empieza sola al acercarte a la dirección y corta al alejarte. Necesita el punto azul de tu ubicación (◎). Estos videos se borran solos a las 12 horas; si pasó algo, tocá 📌 Guardar para conservarlo.</span>
       <h4 style="margin:6px 0 0">Mis grabaciones</h4>
       <div class="grabs" id="grabList"><span class="note">Cargando…</span></div>
     </div>
@@ -653,6 +661,7 @@ input:disabled { opacity: .45; }
     } else { meMarker.setLatLng(ll); meCircle.setLatLng(ll).setRadius(pos.coords.accuracy); }
     if (meFollow) { map.setView(ll, Math.max(map.getZoom(), 15)); meFollow = false; }
     checkArrival({ lat: ll[0], lng: ll[1] });
+    if (SEG_ON) segAutoCheck({ lat: ll[0], lng: ll[1] });
   }
   function onMeErr(e) {
     locBtn.classList.remove("on");
@@ -2441,19 +2450,28 @@ input:disabled { opacity: .45; }
   async function panicoPanel() {
     const ok = SEG_ON && window.sbClient && "MediaRecorder" in window && navigator.mediaDevices;
     $("panicoCard").hidden = !ok; if (!ok) return;
+    $("segAutoM").textContent = Math.max(20, Number($("arriveDist").value) || 150); segLimpiar();
     const u = await panicoUser(), box = $("grabList");
     if (!u) { box.innerHTML = '<span class="note">Entrá con tu cuenta para guardar grabaciones.</span>'; return; }
     const { data, error } = await window.sbClient.storage.from("grabaciones").list(u.id, { limit: 50, sortBy: { column: "name", order: "desc" } });
     box.innerHTML = "";
     if (error) { box.innerHTML = '<span class="note">No se pudieron cargar las grabaciones.</span>'; return; }
-    const dirs = (data || []).filter(x => !x.id);
+    const all = (data || []).filter(x => !x.id), names = new Set(all.map(x => x.name));
+    // una automática que ya se guardó aparece solo como guardada
+    const dirs = all.filter(x => !(/^auto_/.test(x.name) && names.has(x.name.slice(5)))).sort((x, y) => (grabFecha(y.name) || 0) - (grabFecha(x.name) || 0));
     if (!dirs.length) { box.innerHTML = '<span class="note">Todavía no hay grabaciones.</span>'; return; }
+    const hm = (f) => String(f.getHours()).padStart(2, "0") + ":" + String(f.getMinutes()).padStart(2, "0");
     dirs.forEach(d => {
       const row = document.createElement("div"); row.className = "g";
-      const t = document.createElement("span"); t.textContent = d.name.replace(/^(\d{4})-(\d\d)-(\d\d)_(\d\d)-(\d\d)-(\d\d)$/, "$3/$2/$1 $4:$5");
+      const f = grabFecha(d.name), pn = (d.name.match(/_p(\d+)$/) || [])[1], auto = /^auto_/.test(d.name);
+      const t = document.createElement("span");
+      t.textContent = (pn ? "Parada " + pn + " · " : "🔴 ") + (f ? String(f.getDate()).padStart(2, "0") + "/" + String(f.getMonth() + 1).padStart(2, "0") + " " + hm(f) : d.name);
+      if (auto && f) { const sm = document.createElement("small"); sm.textContent = "Se borra a las " + hm(new Date(+f + SEG_HORAS * 3600e3)); t.append(sm); }
       const b = document.createElement("button"); b.className = "mini"; b.type = "button"; b.textContent = "⬇ Descargar";
       b.addEventListener("click", () => panicoBajar(u.id, d.name, b));
-      row.append(t, b); box.append(row);
+      row.append(t);
+      if (auto) { const g = document.createElement("button"); g.className = "mini"; g.type = "button"; g.textContent = "📌 Guardar"; g.addEventListener("click", () => panicoGuardar(u.id, d.name, g)); row.append(g); }
+      row.append(b); box.append(row);
     });
   }
   async function panicoBajar(uid, dir, btn) {
@@ -2469,36 +2487,115 @@ input:disabled { opacity: .45; }
     } catch { toast("No se pudo descargar la grabación", true); }
     btn.disabled = false; btn.textContent = "⬇ Descargar";
   }
-  async function panicoEmpezar() {
-    if (pan) return;
-    const u = await panicoUser(); if (!u) { toast("Entrá con tu cuenta para grabar", true); return; }
-    let stream;
-    try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 15 } }, audio: true }); }
-    catch { toast("Permití la cámara y el micrófono para grabar", true); return; }
-    const p2 = (n) => String(n).padStart(2, "0"), d = new Date();
-    const dir = d.getFullYear() + "-" + p2(d.getMonth() + 1) + "-" + p2(d.getDate()) + "_" + p2(d.getHours()) + "-" + p2(d.getMinutes()) + "-" + p2(d.getSeconds());
-    const type = ["video/webm;codecs=vp8,opus", "video/webm", "video/mp4"].find(t => MediaRecorder.isTypeSupported(t)) || "";
-    const rec = new MediaRecorder(stream, type ? { mimeType: type, videoBitsPerSecond: 400000, audioBitsPerSecond: 32000 } : {});
-    pan = { rec, stream, uid: u.id, dir, n: 0, up: 0, fail: 0, queue: [], busy: false, t0: Date.now(), ext: /mp4/.test(type) ? "mp4" : "webm" };
-    const subir = async () => {
-      const P = pan; if (!P || P.busy) return; P.busy = true;
-      while (P.queue.length) {
-        const [n, blob] = P.queue[0];
-        const { error } = await window.sbClient.storage.from("grabaciones").upload(P.uid + "/" + P.dir + "/parte-" + String(n).padStart(4, "0") + "." + P.ext, blob, { contentType: blob.type || "video/webm" });
-        if (error) { P.fail++; $("panicoUp").textContent = "Sin conexión: reintentando… (" + P.up + " subidos)"; await new Promise(r => setTimeout(r, 3000)); continue; }
-        P.queue.shift(); P.up++; $("panicoUp").textContent = "☁ " + P.up + " partes subidas";
-      }
-      P.busy = false; if (P.done && !P.queue.length) panicoCerrar();
-    };
-    rec.ondataavailable = (e) => { if (e.data && e.data.size) { pan.queue.push([pan.n++, e.data]); subir(); } };
-    rec.onstop = () => { stream.getTracks().forEach(t => t.stop()); pan.done = true; $("panicoUp").textContent = "Terminando de subir…"; if (!pan.queue.length && !pan.busy) panicoCerrar(); };
-    $("panicoCam").srcObject = stream; $("panico").hidden = false; closeSheets();
-    rec.start(5000);
-    pan.tick = setInterval(() => { const s = Math.floor((Date.now() - pan.t0) / 1000); $("panicoRec").textContent = "Grabando " + p2(Math.floor(s / 60)) + ":" + p2(s % 60); if (Date.now() - pan.t0 > PANICO_MAX) panicoParar(); }, 500);
-    if (navigator.vibrate) try { navigator.vibrate(200); } catch {}
+  // auto = parada cerca de la que se graba sola (cartelito arriba, se borra a las 12 h); sin auto = pánico en pantalla completa
+  let panArranca = false;
+  async function panicoEmpezar(auto) {
+    if (auto && auto.type) auto = null; // vino de un click
+    if (pan) { if (!auto && pan.auto) { pan.auto = null; pan.keep = true; pan.t0max = Date.now(); $("segRec").hidden = true; $("panicoCam").srcObject = pan.stream; $("panico").hidden = false; closeSheets(); } return; }
+    if (panArranca) return; panArranca = true;
+    try {
+      const u = await panicoUser(); if (!u) { if (!auto) toast("Entrá con tu cuenta para grabar", true); return false; }
+      let stream;
+      try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 15 } }, audio: true }); }
+      catch { if (!auto) toast("Permití la cámara y el micrófono para grabar", true); return false; }
+      const p2 = (n) => String(n).padStart(2, "0"), d = new Date();
+      const stopNo = auto ? (route && route.order.includes(auto.num) ? route.order.indexOf(auto.num) + 1 : auto.num) : 0;
+      const dir = (auto ? "auto_" : "") + d.getFullYear() + "-" + p2(d.getMonth() + 1) + "-" + p2(d.getDate()) + "_" + p2(d.getHours()) + "-" + p2(d.getMinutes()) + "-" + p2(d.getSeconds()) + (auto ? "_p" + stopNo : "");
+      const type = ["video/webm;codecs=vp8,opus", "video/webm", "video/mp4"].find(t => MediaRecorder.isTypeSupported(t)) || "";
+      const rec = new MediaRecorder(stream, type ? { mimeType: type, videoBitsPerSecond: 400000, audioBitsPerSecond: 32000 } : {});
+      pan = { rec, stream, uid: u.id, dir, auto, n: 0, up: 0, fail: 0, queue: [], busy: false, t0: Date.now(), t0max: Date.now(), ext: /mp4/.test(type) ? "mp4" : "webm" };
+      const P0 = pan;
+      const subir = async () => {
+        const P = P0; if (P.busy) return; P.busy = true;
+        while (P.queue.length) {
+          const [n, blob] = P.queue[0];
+          const { error } = await window.sbClient.storage.from("grabaciones").upload(P.uid + "/" + P.dir + "/parte-" + String(n).padStart(4, "0") + "." + P.ext, blob, { contentType: blob.type || "video/webm" });
+          if (error) { P.fail++; $("panicoUp").textContent = "Sin conexión: reintentando… (" + P.up + " subidos)"; await new Promise(r => setTimeout(r, 3000)); continue; }
+          P.queue.shift(); P.up++; $("panicoUp").textContent = "☁ " + P.up + " partes subidas";
+        }
+        P.busy = false; if (P.done && !P.queue.length) panicoCerrar(P);
+      };
+      rec.ondataavailable = (e) => { if (e.data && e.data.size) { P0.queue.push([P0.n++, e.data]); subir(); } };
+      rec.onstop = () => { clearInterval(P0.tick); stream.getTracks().forEach(t => t.stop()); P0.done = true; $("panicoUp").textContent = "Terminando de subir…"; if (!P0.queue.length && !P0.busy) panicoCerrar(P0); };
+      // si el teléfono apaga la cámara (pantalla apagada, otra app), se corta y se guarda lo grabado
+      stream.getTracks().forEach(t => t.addEventListener("ended", panicoParar));
+      if (auto) { $("segRecTxt").textContent = "Grabando parada " + stopNo; $("segRec").hidden = false; }
+      else { $("panicoCam").srcObject = stream; $("panico").hidden = false; closeSheets(); }
+      $("segBtn").classList.add("rec");
+      rec.start(5000);
+      pan.tick = setInterval(() => {
+        const s = Math.floor((Date.now() - P0.t0) / 1000); $("panicoRec").textContent = "Grabando " + p2(Math.floor(s / 60)) + ":" + p2(s % 60);
+        if (Date.now() - P0.t0max > (P0.auto ? SEG_AUTO_MAX : PANICO_MAX)) { if (P0.auto) segHecho.add(P0.auto.num); panicoParar(); }
+      }, 500);
+      if (!auto && navigator.vibrate) try { navigator.vibrate(200); } catch {}
+      return true;
+    } finally { panArranca = false; }
   }
   function panicoParar() { if (!pan || pan.rec.state === "inactive") return; clearInterval(pan.tick); try { pan.rec.stop(); } catch {} }
-  function panicoCerrar() { const P = pan; pan = null; $("panico").hidden = true; $("panicoCam").srcObject = null; toast(P && P.up ? "Grabación guardada en la nube (" + P.up + " partes)" : "La grabación no se pudo subir", !(P && P.up)); }
+  function panicoCerrar(P) {
+    if (pan === P) pan = null;
+    $("segBtn").classList.toggle("rec", !!pan);
+    if (!pan) { $("panico").hidden = true; $("segRec").hidden = true; $("panicoCam").srcObject = null; }
+    if (P.keep) panicoGuardar(P.uid, P.dir);
+    if (!P.auto || P.keep) toast(P.up ? "Grabación guardada en la nube (" + P.up + " partes)" : "La grabación no se pudo subir", !P.up);
+  }
+  // 📌 Guardar: copia una grabación automática a una carpeta que no se borra
+  async function panicoGuardar(uid, dir, btn) {
+    if (btn) { btn.disabled = true; btn.textContent = "Guardando…"; }
+    const st = window.sbClient.storage.from("grabaciones"), nuevo = dir.replace(/^auto_/, "");
+    let ok = false;
+    try {
+      const { data } = await st.list(uid + "/" + dir, { limit: 1000 });
+      ok = !!(data && data.length);
+      for (const f of data || []) { const r = await st.copy(uid + "/" + dir + "/" + f.name, uid + "/" + nuevo + "/" + f.name); if (r.error && !/exist/i.test(r.error.message || "")) ok = false; }
+    } catch { ok = false; }
+    toast(ok ? "Grabación guardada: no se va a borrar" : "No se pudo guardar la grabación", !ok);
+    if (btn) panicoPanel();
+  }
+  // ---------- grabación automática cerca de cada parada (el chofer da el okey en el escudo) ----------
+  const SEG_HORAS = 12, SEG_AUTO_MAX = 30 * 60 * 1000;
+  const segHecho = new Set(); let segFallo = 0;
+  function grabFecha(name) { const m = name.match(/(\d{4})-(\d\d)-(\d\d)_(\d\d)-(\d\d)-(\d\d)/); return m ? new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : null; }
+  function segAutoCheck(me) {
+    if (!window.sbClient || !store.get("segAuto", false) || !("MediaRecorder" in window)) return;
+    const lim = Math.max(20, Number($("arriveDist").value) || 150);
+    if (pan) {
+      if (pan.auto) { const it = byNum(pan.auto.num); if (!it || typeof it.lat !== "number" || kmBetween(me, it) * 1000 > lim + 30) panicoParar(); }
+      return;
+    }
+    if (Date.now() - segFallo < 60000) return;
+    const cerca = items.filter(it => !it.done && typeof it.lat === "number" && !segHecho.has(it.num))
+      .map(it => [kmBetween(me, it) * 1000, it]).filter(x => x[0] <= lim).sort((x, y) => x[0] - y[0])[0];
+    if (cerca) panicoEmpezar(cerca[1]).then(ok => { if (ok === false) segFallo = Date.now(); });
+  }
+  // borra las automáticas de más de 12 horas (Supabase solo deja borrar esas)
+  async function segLimpiar() {
+    try {
+      const u = window.sbClient && await panicoUser(); if (!u) return;
+      const st = window.sbClient.storage.from("grabaciones");
+      const { data } = await st.list(u.id, { limit: 500 });
+      for (const d of (data || []).filter(x => !x.id && /^auto_/.test(x.name))) {
+        const f = grabFecha(d.name); if (!f || Date.now() - f < SEG_HORAS * 3600e3 || (pan && pan.dir === d.name)) continue;
+        const r = await st.list(u.id + "/" + d.name, { limit: 1000 });
+        const paths = (r.data || []).map(x => u.id + "/" + d.name + "/" + x.name);
+        if (paths.length) await st.remove(paths);
+      }
+    } catch {}
+  }
+  if (SEG_ON) { setTimeout(segLimpiar, 8000); setInterval(segLimpiar, 30 * 60 * 1000); }
+  $("segAutoChk").checked = store.get("segAuto", false);
+  $("segAutoChk").addEventListener("change", async (e) => {
+    const on = e.target.checked;
+    if (on) {
+      if (!(await panicoUser())) { e.target.checked = false; toast("Entrá con tu cuenta para grabar", true); return; }
+      try { const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: true }); s.getTracks().forEach(t => t.stop()); }
+      catch { e.target.checked = false; toast("Permití la cámara y el micrófono para grabar", true); return; }
+    } else if (pan && pan.auto) panicoParar();
+    store.set("segAuto", on);
+    if (on) { startMe(false); if (meLast) segAutoCheck({ lat: meLast[0], lng: meLast[1] }); }
+    toast(on ? "Listo: se graba al llegar a cada parada" : "Grabación automática apagada");
+  });
+  $("segRec").addEventListener("click", () => { if (pan && pan.auto) { segHecho.add(pan.auto.num); panicoParar(); } });
   $("panicoGo").addEventListener("click", panicoEmpezar);
   $("panicoStop").addEventListener("click", panicoParar);
 
