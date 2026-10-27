@@ -673,6 +673,17 @@ input:disabled { opacity: .45; }
     return "549" + d;
   }
   const waLink = (it) => "https://wa.me/" + waNum(it.tel) + "?text=" + encodeURIComponent("Hola, soy el repartidor. Estoy en camino con tu paquete " + code(it.num) + (it.address ? " para " + it.address : "") + ".");
+  // WhatsApp no deja adjuntar una foto por link: se comparte con el menú del teléfono y el chofer elige el chat del cliente
+  // (si antes le mandó el mensaje con 💬 WhatsApp, ese chat aparece primero).
+  async function waFoto(it) {
+    const b = it.photo ? await fotos.get(it.num) : null;
+    if (!b) { toast("Este paquete no tiene foto", true); return; }
+    const data = { files: [new File([b], "paquete-" + code(it.num) + ".jpg", { type: b.type || "image/jpeg" })], text: "Tu paquete " + code(it.num) + (it.address ? " para " + it.address : "") + "." };
+    if (navigator.canShare && navigator.canShare(data)) {
+      toast("Elegí WhatsApp y el chat del cliente");
+      try { await navigator.share(data); } catch {}
+    } else toast("Este teléfono no deja compartir la foto desde acá", true);
+  }
   const telLink = (it) => "tel:" + String(it.tel).replace(/[^\d+]/g, "");
   const gmaps = (it) => "https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=" +
     encodeURIComponent(typeof it.lat === "number" ? it.lat + "," + it.lng : it.address);
@@ -793,11 +804,12 @@ input:disabled { opacity: .45; }
         ${it.done ? "<div>✓ Entregada</div>" : ""}
         ${it.photo || it.cfoto ? '<img class="pkmini" alt="Foto del paquete" hidden>' : ""}
         <div class="pacts"><a class="mini" href="${gmaps(it)}" target="_blank" rel="noopener">Navegar</a>
-        ${it.tel ? `<a class="mini" href="${esc(waLink(it))}" target="_blank" rel="noopener">💬 WhatsApp</a><a class="mini" href="${esc(telLink(it))}">📞 Llamar</a>` : ""}
+        ${it.tel ? `<a class="mini" href="${esc(waLink(it))}" target="_blank" rel="noopener">💬 WhatsApp</a>${it.photo ? '<button class="mini" type="button" data-a="wafoto">📷 Foto por WhatsApp</button>' : ""}<a class="mini" href="${esc(telLink(it))}">📞 Llamar</a>` : ""}
         <button class="mini" type="button" data-a="edit">Editar</button>
         <button class="mini" type="button" data-a="done">${it.done ? "Deshacer" : "Entregada"}</button>
         <button class="mini" type="button" data-a="del">Eliminar</button></div>`;
       d.querySelector('[data-a="edit"]').addEventListener("click", () => { map.closePopup(); openEdit(it); });
+      const wf = d.querySelector('[data-a="wafoto"]'); if (wf) wf.addEventListener("click", () => waFoto(it));
       const pm = d.querySelector(".pkmini");
       if (pm) { fotos.get(it.photo ? it.num : "c" + it.num).then(b => { if (b) { pm.src = URL.createObjectURL(b); pm.hidden = false; } }); pm.addEventListener("click", () => showPhoto(it)); }
       d.querySelector('[data-a="done"]').addEventListener("click", () => { it.done = !it.done; save(); map.closePopup(); refresh(false); });
@@ -927,7 +939,9 @@ input:disabled { opacity: .45; }
         if (it.tel) {
           const wa = document.createElement("a"); wa.href = waLink(it); wa.target = "_blank"; wa.rel = "noopener"; wa.innerHTML = '<span style="font-size:1.1rem">💬</span><span>WhatsApp</span>';
           const ll = document.createElement("a"); ll.href = telLink(it); ll.innerHTML = '<span style="font-size:1.1rem">📞</span><span>Llamar</span>';
-          acts.append(wa, ll);
+          acts.append(wa);
+          if (it.photo) { const wf = document.createElement("button"); wf.type = "button"; wf.innerHTML = '<span style="font-size:1.1rem">📷</span><span>Foto WA</span>'; wf.addEventListener("click", () => waFoto(it)); acts.append(wf); }
+          acts.append(ll);
         }
         li.append(acts);
       }
