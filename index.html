@@ -224,6 +224,9 @@ input:disabled { opacity: .45; }
 .grabs .g small { display: block; color: var(--muted); font-size: .78rem; }
 #segRec { position: fixed; bottom: calc(108px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); z-index: 520; border: 0; border-radius: 999px; background: #b71c1c; color: #fff; font: 700 .9rem var(--display, inherit); padding: 8px 14px; box-shadow: 0 4px 14px rgba(0,0,0,.35); cursor: pointer; white-space: nowrap; }
 #segRec b { display: inline-block; animation: vozpulse 1s infinite; }
+#segCheck { position: fixed; left: 12px; right: 12px; bottom: calc(108px + env(safe-area-inset-bottom, 0px)); z-index: 520; border: 0; border-radius: 16px; background: #1b5e20; color: #fff; padding: 12px 14px; text-align: left; font: 600 .95rem var(--display, inherit); box-shadow: 0 6px 18px rgba(0,0,0,.35); cursor: pointer; display: grid; gap: 4px; }
+#segCheck small { font-weight: 400; opacity: .9; }
+.segbtn.chk { background: #2e7d32; animation: vozpulse 1s infinite; }
 .segbtn.rec { animation: vozpulse 1s infinite; }
 .vozbub { position: fixed; left: 12px; top: calc(50% - 30px); z-index: 520; width: 52px; height: 52px; border-radius: 50%; border: 0; padding: 0; background: var(--surface); box-shadow: 0 4px 14px rgba(0,0,0,.35); touch-action: none; cursor: pointer; overflow: visible; }
 .vozbub img { width: 100%; height: 100%; border-radius: 50%; display: block; pointer-events: none; }
@@ -404,6 +407,7 @@ input:disabled { opacity: .45; }
 <button class="vozbub" id="vozBub" type="button" aria-label="Asistente de voz: tocá y hablá" hidden><img alt=""></button>
 <div id="vozMsg" role="status" hidden></div>
 <div id="panico" hidden><div class="top"><div class="rec" id="panicoRec">Grabando 00:00</div><div id="panicoUp">Subiendo a la nube…</div></div><video id="panicoCam" playsinline muted autoplay></video><div class="bot"><button class="btn" id="panicoStop" type="button" style="background:#fff;color:#111">⏹ Terminar grabación</button></div></div>
+<button id="segCheck" type="button" hidden><span id="segCheckTxt">🛡 ¿Todo bien?</span><small>Tocá el escudo para hacer el check-in y se borra el video. Si no, queda guardado 12 horas.</small></button>
 <button id="segRec" type="button" hidden aria-label="Cortar grabación"><b>●</b> <span id="segRecTxt">Grabando</span> · ⏹</button>
 <section id="p-review" class="sheet" hidden aria-label="Nueva dirección">
  <div class="sheet-head"><h2>Nueva dirección</h2><button class="x" type="button" data-close aria-label="Cerrar">✕</button></div>
@@ -470,7 +474,7 @@ input:disabled { opacity: .45; }
       <button class="segcall" id="panicoGo" type="button" style="background:#b71c1c;border:0;width:100%;cursor:pointer">🔴<span>Grabar emergencia<small>Se detiene sola a los 10 minutos</small></span></button>
       <h4 style="margin:6px 0 0">Grabar al llegar a cada parada</h4>
       <label class="check"><input id="segAutoChk" type="checkbox"> Doy el okey: grabar mientras esté a menos de <b id="segAutoM">150</b> m de una parada</label>
-      <span class="note">Empieza sola al acercarte a la dirección y corta al alejarte. Necesita el punto azul de tu ubicación (◎). Estos videos se borran solos a las 12 horas; si pasó algo, tocá 📌 Guardar para conservarlo.</span>
+      <span class="note">Empieza sola al acercarte a la dirección y corta al alejarte. Al salir te pide el check-in: tocás el escudo y el video se borra. Si no hacés el check-in, el video queda 12 horas y después se borra solo; si pasó algo, tocá 📌 Guardar para conservarlo. Necesita el punto azul de tu ubicación (◎).</span>
       <h4 style="margin:6px 0 0">Mis grabaciones</h4>
       <div class="grabs" id="grabList"><span class="note">Cargando…</span></div>
     </div>
@@ -2440,7 +2444,7 @@ input:disabled { opacity: .45; }
   if (CARGA_ON) $("fabCarga").hidden = false;
   // botón fijo del escudo: abre Seguridad con las llamadas de emergencia
   const SEG_ON = false;
-  if (SEG_ON) { $("segBtn").hidden = false; $("segBtn").addEventListener("click", () => { showTab("p-seg"); panicoPanel(); }); }
+  if (SEG_ON) { $("segBtn").hidden = false; $("segBtn").addEventListener("click", () => { if (segCheck) segCheckIn(); else { showTab("p-seg"); panicoPanel(); } }); }
 
   // ---------- modo pánico: graba y sube a Supabase Storage (carpeta del chofer) cada 5 segundos ----------
   // Los pedazos se guardan como <usuario>/<fecha>/parte-NNNN.webm; juntos en orden forman el video.
@@ -2519,7 +2523,7 @@ input:disabled { opacity: .45; }
       rec.onstop = () => { clearInterval(P0.tick); stream.getTracks().forEach(t => t.stop()); P0.done = true; $("panicoUp").textContent = "Terminando de subir…"; if (!P0.queue.length && !P0.busy) panicoCerrar(P0); };
       // si el teléfono apaga la cámara (pantalla apagada, otra app), se corta y se guarda lo grabado
       stream.getTracks().forEach(t => t.addEventListener("ended", panicoParar));
-      if (auto) { $("segRecTxt").textContent = "Grabando parada " + stopNo; $("segRec").hidden = false; }
+      if (auto) { pan.stopNo = stopNo; segCheckSet(null); $("segRecTxt").textContent = "Grabando parada " + stopNo; $("segRec").hidden = false; }
       else { $("panicoCam").srcObject = stream; $("panico").hidden = false; closeSheets(); }
       $("segBtn").classList.add("rec");
       rec.start(5000);
@@ -2537,6 +2541,7 @@ input:disabled { opacity: .45; }
     $("segBtn").classList.toggle("rec", !!pan);
     if (!pan) { $("panico").hidden = true; $("segRec").hidden = true; $("panicoCam").srcObject = null; }
     if (P.keep) panicoGuardar(P.uid, P.dir);
+    else if (P.auto && P.up && !pan) segCheckSet(P);
     if (!P.auto || P.keep) toast(P.up ? "Grabación guardada en la nube (" + P.up + " partes)" : "La grabación no se pudo subir", !P.up);
   }
   // 📌 Guardar: copia una grabación automática a una carpeta que no se borra
@@ -2595,6 +2600,27 @@ input:disabled { opacity: .45; }
     if (on) { startMe(false); if (meLast) segAutoCheck({ lat: meLast[0], lng: meLast[1] }); }
     toast(on ? "Listo: se graba al llegar a cada parada" : "Grabación automática apagada");
   });
+  // check-in al salir de la parada: el chofer toca el escudo, el video se borra; si no, queda 12 h
+  let segCheck = null;
+  function segCheckSet(P) {
+    segCheck = P; $("segCheck").hidden = !P; $("segBtn").classList.toggle("chk", !!P);
+    if (!P) return;
+    $("segCheckTxt").textContent = "🛡 ¿Todo bien en la parada " + P.stopNo + "?";
+    if (navigator.vibrate) try { navigator.vibrate([150, 100, 150]); } catch {}
+    speak("¿Todo bien? Tocá el escudo para hacer el check-in.");
+  }
+  async function segCheckIn() {
+    const P = segCheck; segCheckSet(null); if (!P) return;
+    try {
+      const st = window.sbClient.storage.from("grabaciones");
+      const { data } = await st.list(P.uid + "/" + P.dir, { limit: 1000 });
+      const paths = (data || []).map(x => P.uid + "/" + P.dir + "/" + x.name);
+      const { error } = paths.length ? await st.remove(paths) : { error: null };
+      if (error) throw error;
+      toast("Check-in hecho: video borrado");
+    } catch { toast("Check-in hecho. El video no se pudo borrar ahora; se borra solo a las 12 horas.", true); }
+  }
+  $("segCheck").addEventListener("click", segCheckIn);
   $("segRec").addEventListener("click", () => { if (pan && pan.auto) { segHecho.add(pan.auto.num); panicoParar(); } });
   $("panicoGo").addEventListener("click", panicoEmpezar);
   $("panicoStop").addEventListener("click", panicoParar);
