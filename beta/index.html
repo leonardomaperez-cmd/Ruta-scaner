@@ -239,7 +239,7 @@ input:disabled { opacity: .45; }
 .czs h4 small { color: var(--muted); font-weight: 400; }
 .cst { display: flex; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: .9rem; touch-action: none; cursor: grab; background: var(--surface); -webkit-user-select: none; user-select: none; }
 .cst b { color: var(--accent); white-space: nowrap; }
-.cst.pin b::after { content: " 📌"; font-size: .7rem; }
+.cst.cpin b::after { content: " 📌"; font-size: .7rem; }
 .cst.hot { border-top: 3px solid var(--accent); }
 .cst.drag { opacity: .35; }
 .cempty { font-size: .8rem; color: var(--muted); text-align: center; padding: 4px; }
@@ -2225,7 +2225,7 @@ input:disabled { opacity: .45; }
       const sec = document.createElement("div"); sec.className = "czs"; sec.dataset.k = k;
       const h = document.createElement("h4"); h.innerHTML = '<span></span> <small>· ' + here.length + ' 📦</small>'; h.firstChild.textContent = lab; sec.append(h);
       here.forEach(it => {
-        const r = document.createElement("div"); r.className = "cst" + (it.zona ? " pin" : ""); r.dataset.n = it.num; r.dataset.k = k;
+        const r = document.createElement("div"); r.className = "cst" + (it.zona ? " cpin" : ""); r.dataset.n = it.num; r.dataset.k = k;
         const b = document.createElement("b"); b.textContent = stopTag(it); const sp = document.createElement("span"); sp.textContent = it.address;
         r.append(b, sp); sec.append(r); dragRow(r);
       });
