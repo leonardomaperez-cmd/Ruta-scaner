@@ -35,6 +35,7 @@ body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--body); ov
 .fabs { position: fixed; left: 0; right: 0; bottom: calc(42px + env(safe-area-inset-bottom, 0px)); z-index: 500; display: flex; justify-content: center; align-items: center; gap: 22px; pointer-events: none; }
 .fab { pointer-events: auto; position: relative; width: 58px; height: 58px; border-radius: 50%; border: 0; background: var(--surface); color: var(--ink); box-shadow: 0 4px 14px rgba(0,0,0,.35); display: grid; place-items: center; cursor: pointer; }
 .fab svg { width: 26px; height: 26px; }
+.fab[hidden] { display: none; }
 .fab.big { width: 76px; height: 76px; background: var(--accent); color: var(--accent-ink); }
 .fab.big svg { width: 34px; height: 34px; }
 .fab .cnt { position: absolute; top: -4px; right: -4px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; background: var(--ink); color: var(--bg); font: 700 12px/22px var(--mono); }
@@ -224,6 +225,32 @@ input:disabled { opacity: .45; }
 .xpop[hidden] { display: none !important; }
 .photorow { display: flex; gap: 10px; align-items: center; }
 .photorow img { width: 56px; height: 56px; object-fit: cover; border-radius: 10px; border: 1px solid var(--line); }
+/* sección Carga: dónde va cada paquete en el vehículo */
+#cargaSvg svg { width: 100%; max-width: 360px; display: block; margin: 0 auto; }
+#cargaSvg .zr { stroke-width: 2; fill-opacity: .18; }
+#cargaSvg .zl { font: 600 12px var(--body); fill: var(--ink); }
+#cargaSvg .zb { fill: none; stroke: var(--muted); stroke-width: 2; }
+#cargaSvg .zt { font: 12px var(--body); fill: var(--muted); }
+#cargaSvg .pk { font-size: 17px; cursor: pointer; }
+#cargaSvg .z.hot .zr { stroke-width: 5; fill-opacity: .4; }
+.czs { border: 1px solid var(--line); border-radius: 12px; padding: 8px; display: grid; gap: 6px; }
+.czs.hot { outline: 2px solid var(--accent); }
+.czs h4 { margin: 0; font: 600 .9rem var(--display); }
+.czs h4 small { color: var(--muted); font-weight: 400; }
+.cst { display: flex; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: .9rem; touch-action: none; cursor: grab; background: var(--surface); -webkit-user-select: none; user-select: none; }
+.cst b { color: var(--accent); white-space: nowrap; }
+.cst.pin b::after { content: " 📌"; font-size: .7rem; }
+.cst.hot { border-top: 3px solid var(--accent); }
+.cst.drag { opacity: .35; }
+.cempty { font-size: .8rem; color: var(--muted); text-align: center; padding: 4px; }
+#cGhost[hidden] { display: none; }
+#cGhost { position: fixed; z-index: 2100; pointer-events: none; width: 240px; box-shadow: 0 8px 20px rgba(0,0,0,.35); }
+#pkCard { position: fixed; inset: 0; z-index: 2000; background: rgba(0,0,0,.6); display: grid; place-items: center; padding: 16px; }
+#pkCard[hidden] { display: none; }
+#pkCard > div { background: var(--surface); color: var(--ink); border-radius: 16px; padding: 14px; width: min(340px, 100%); display: grid; gap: 8px; max-height: 90vh; overflow: auto; }
+#pkCard .id { font: 700 1.25rem var(--display); color: var(--accent); }
+#pkCard img { width: 100%; border-radius: 10px; }
+#pkCard .muted { color: var(--muted); font-size: .85rem; }
 .pkview { position: fixed; inset: 0; z-index: 2000; background: rgba(0,0,0,.88); display: grid; place-items: center; padding: 16px; }
 .pkview img { max-width: 100%; max-height: 78vh; border-radius: 12px; }
 .pkview p { color: #fff; font: 600 1rem var(--display); text-align: center; margin: 10px 0 0; }
@@ -257,6 +284,10 @@ input:disabled { opacity: .45; }
   <button class="fab" type="button" data-p="p-stops" aria-label="Paradas">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4" cy="6" r="1.5"/><circle cx="4" cy="12" r="1.5"/><circle cx="4" cy="18" r="1.5"/></svg>
     <span class="cnt" id="countTab"></span><span class="fab-label">Paradas</span>
+  </button>
+  <button class="fab" type="button" data-p="p-carga" aria-label="Carga" id="fabCarga" hidden>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/></svg>
+    <span class="fab-label">Carga</span>
   </button>
   <button class="fab" type="button" data-p="p-set" aria-label="Ajustes">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
@@ -293,6 +324,7 @@ input:disabled { opacity: .45; }
   <div class="big" id="arriveCode"></div>
   <div id="arriveAddr"></div>
   <div class="ref" id="arriveRef"></div>
+  <div id="arriveZone" hidden></div>
   <div class="row"><button class="btn" id="arriveSay" type="button">🔊 Repetir</button><button class="btn btn-primary" id="arriveDone" type="button">Entregada</button><button class="btn" id="arriveClose" type="button">Cerrar</button></div>
 </div>
 <div id="finish" role="alert" hidden>
@@ -345,6 +377,8 @@ input:disabled { opacity: .45; }
   <div id="revList"></div>
 </section>
 <div class="backdrop" id="backdrop" hidden></div>
+<div id="pkCard" hidden></div>
+<div id="cGhost" class="cst" hidden></div>
   <section id="p-stops" class="sheet" hidden aria-label="Paradas">
    <div class="sheet-head"><h2>Paradas</h2><button class="x" type="button" data-close aria-label="Cerrar">✕</button></div>
    <div class="wrap">
@@ -364,6 +398,23 @@ input:disabled { opacity: .45; }
    </div>
   </section>
 
+  <section id="p-carga" class="sheet" hidden aria-label="Carga">
+   <div class="sheet-head"><h2>Carga</h2><button class="x" type="button" data-close aria-label="Cerrar">✕</button></div>
+   <div class="wrap">
+    <div class="card">
+      <label class="label" for="vehSel">Vehículo</label>
+      <select id="vehSel"><option value="auto">Auto</option><option value="util">Utilitario (Kangoo, Partner, Fiorino…)</option></select>
+      <div id="cargaSvg"></div>
+      <span class="note" id="cargaMsg">Cada 📦 es un paquete: tocalo para ver la foto, la dirección y su código.</span>
+    </div>
+    <div class="card">
+      <h3 style="margin:0">Guía de carga</h3>
+      <span class="note">Lo primero que entregás queda a mano y lo último al fondo. Mantené apretada una dirección y arrastrala a otra zona (en la lista o sobre el dibujo): queda fija 📌 y las demás se reacomodan solas.</span>
+      <div id="cargaGuide" style="display:grid;gap:8px"></div>
+      <button id="cargaReset" class="btn" type="button">Volver a la sugerencia</button>
+    </div>
+   </div>
+  </section>
   <section id="p-set" class="sheet" hidden aria-label="Ajustes">
    <div class="sheet-head"><h2>Ajustes</h2><button class="x" type="button" data-close aria-label="Cerrar">✕</button></div>
    <div class="wrap">
@@ -469,6 +520,7 @@ input:disabled { opacity: .45; }
     if (id === "p-scan") { closeSheets(); openScanner(); return; }
     closeSheets(); $(id).hidden = false; $("backdrop").hidden = false;
     if (id === "p-review") renderReview();
+    if (id === "p-carga") renderCarga();
   }
   document.querySelectorAll(".fab[data-p]").forEach(t => t.addEventListener("click", () => showTab(t.dataset.p)));
   document.querySelectorAll("[data-close]").forEach(b => b.addEventListener("click", closeSheets));
@@ -695,7 +747,8 @@ input:disabled { opacity: .45; }
   function arriveText(it) {
     const stop = route ? route.order.indexOf(it.num) + 1 : 0, l = letters().get(it.num);
     return "Llegando a " + (stop ? "la parada " + stop + (l ? ", letra " + l.split("").join(" ") : "") + ". " : "la parada. ") +
-      "Paquete " + code(it.num).replace(/(\D+)(\d+)/, "$1 $2") + ". " + (it.extra ? "Ojo, lleva " + (it.extra + 1) + " paquetes. " : "") + (it.ref ? "Referencia: " + it.ref + "." : "Sin referencia.");
+      "Paquete " + code(it.num).replace(/(\D+)(\d+)/, "$1 $2") + ". " + (it.extra ? "Ojo, lleva " + (it.extra + 1) + " paquetes. " : "") + (it.ref ? "Referencia: " + it.ref + "." : "Sin referencia.") +
+      (zonaDe(it) ? " El paquete está en " + zonaDe(it).toLowerCase() + "." : "");
   }
   function showArrival(it) {
     arriveItem = it;
@@ -703,6 +756,7 @@ input:disabled { opacity: .45; }
     $("arriveCode").textContent = (stop ? "Parada " + stop + (l ? " · " + l : "") + " · " : "") + code(it.num);
     $("arriveAddr").textContent = it.address;
     $("arriveRef").textContent = it.ref ? "🗒 " + it.ref : "Sin referencia";
+    const zn = zonaDe(it); $("arriveZone").hidden = !zn; $("arriveZone").textContent = zn ? "📦 Está en: " + zn : "";
     $("arrive").hidden = false;
     if (navigator.vibrate) try { navigator.vibrate([200, 100, 200]); } catch {}
     speak(arriveText(it));
@@ -908,7 +962,7 @@ input:disabled { opacity: .45; }
       $("navAll").href = u.toString(); $("navAll").hidden = false;
     } else $("navAll").hidden = true;
   }
-  function refresh(fit) { render(); drawMap(fit); renderReview(); checkFinished(); }
+  function refresh(fit) { render(); drawMap(fit); renderReview(); checkFinished(); if (!$("p-carga").hidden) renderCarga(); }
 
   // Ruta terminada: cuando todas las paradas están entregadas, ofrece empezar una ruta nueva desde cero
   let finishSeen = false;
@@ -2123,6 +2177,98 @@ input:disabled { opacity: .45; }
   $("arriveChk").addEventListener("change", () => store.set("arrive", $("arriveChk").checked));
   $("arriveDist").value = store.get("arriveDist", "150");
   $("arriveDist").addEventListener("change", () => store.set("arriveDist", $("arriveDist").value.trim()));
+
+  // ---------- Carga: en qué zona del vehículo va cada paquete ----------
+  // Sugiere la zona por el orden de la ruta (lo primero a mano, lo último al fondo); el chofer puede arrastrar
+  // una dirección a otra zona y queda fija en it.zona. El aviso de llegada dice la zona.
+  const CARGA_ON = false;
+  const VEH = {
+    auto: { h: 330, body: '<rect class="zb" x="40" y="6" width="220" height="318" rx="60"/><text class="zt" x="150" y="28" text-anchor="middle">↑ adelante</text><rect x="62" y="40" width="84" height="64" rx="10" fill="#94a3b8" fill-opacity=".2"/><text class="zt" x="104" y="76" text-anchor="middle">Conductor</text>',
+      zones: [["aco", "Acompañante", "Acompañ.", 154, 40, 84, 64, 2, "#3b82f6"], ["ati", "Asiento de atrás izquierda", "Atrás izq.", 62, 114, 84, 76, 1, "#8b5cf6"], ["atd", "Asiento de atrás derecha", "Atrás der.", 154, 114, 84, 76, 1, "#8b5cf6"],
+        ["bi", "Baúl izquierda", "Baúl izq.", 62, 200, 56, 110, 2, "#f59e0b"], ["bc", "Baúl centro", "Baúl centro", 122, 200, 56, 110, 2, "#f59e0b"], ["bd", "Baúl derecha", "Baúl der.", 182, 200, 56, 110, 2, "#f59e0b"]] },
+    util: { h: 420, body: '<rect class="zb" x="40" y="6" width="220" height="404" rx="34"/><text class="zt" x="150" y="24" text-anchor="middle">↑ adelante</text><rect x="58" y="32" width="88" height="50" rx="10" fill="#94a3b8" fill-opacity=".2"/><text class="zt" x="102" y="62" text-anchor="middle">Conductor</text><line x1="52" y1="92" x2="248" y2="92" stroke="currentColor" stroke-width="3" opacity=".5"/><line x1="262" y1="194" x2="262" y2="276" stroke="#22c55e" stroke-width="6"/><line x1="64" y1="412" x2="236" y2="412" stroke="#f59e0b" stroke-width="6"/><text class="zt" x="150" y="400" text-anchor="middle">puertas traseras ↓</text>',
+      zones: [["aco", "Acompañante", "Acompañ.", 154, 32, 88, 50, 8, "#3b82f6"], ["md", "Medio derecha (puerta lateral)", "Medio der.", 154, 190, 88, 90, 10, "#22c55e"], ["ai", "Atrás izquierda", "Atrás izq.", 58, 288, 88, 96, 4, "#f59e0b"],
+        ["ad", "Atrás derecha", "Atrás der.", 154, 288, 88, 96, 3, "#f59e0b"], ["mi", "Medio izquierda", "Medio izq.", 58, 190, 88, 90, 10, "#14b8a6"], ["fd", "Fondo derecha (contra los asientos)", "Fondo der.", 154, 102, 88, 80, 10, "#8b5cf6"], ["fi", "Fondo izquierda (contra los asientos)", "Fondo izq.", 58, 102, 88, 80, 15, "#8b5cf6"]] },
+  };
+  const veh = () => VEH[store.get("vehiculo", "auto")] || VEH.auto;
+  const zonaLabel = (k) => { const z = veh().zones.find(z => z[0] === k); return z ? z[1] : ""; };
+  // reparte todas las paradas (también las entregadas, para que nada cambie de lugar al ir entregando)
+  function cargaPlan() {
+    const zs = veh().zones, keys = zs.map(z => z[0]), list = orderedItems().filter(it => !it.review), a = new Map();
+    const pinned = list.filter(it => it.zona && keys.includes(it.zona));
+    pinned.forEach(it => a.set(it.num, it.zona));
+    const tot = zs.reduce((n, z) => n + z[7], 0), N = list.length;
+    let acc = 0; const free = zs.map(z => { const from = Math.round(acc / tot * N); acc += z[7]; return [z[0], Math.round(acc / tot * N) - from - pinned.filter(it => it.zona === z[0]).length]; });
+    let zi = 0;
+    list.forEach(it => { if (a.has(it.num)) return; while (zi < free.length - 1 && free[zi][1] <= 0) zi++; a.set(it.num, free[zi][0]); free[zi][1]--; });
+    return a;
+  }
+  function zonaDe(it) { if (!CARGA_ON || !items.length) return ""; return zonaLabel(cargaPlan().get(it.num)); }
+  const stopTag = (it) => { const st = route ? route.order.indexOf(it.num) + 1 : 0, l = letters().get(it.num); return (st ? st + " · " : "") + (l ? l + " · " : "") + code(it.num); };
+  function renderCarga() {
+    const v = veh(), plan = cargaPlan(), list = orderedItems().filter(it => !it.review);
+    $("vehSel").value = store.get("vehiculo", "auto");
+    let svgS = '<svg viewBox="0 0 300 ' + v.h + '" style="color:var(--muted)">' + v.body;
+    v.zones.forEach(([k, , sh, x, y, w, hgt, , col]) => {
+      const here = list.filter(it => plan.get(it.num) === k && !it.done), per = Math.max(1, Math.floor((w - 8) / 20)), rows = Math.max(1, Math.floor((hgt - 26) / 21)), max = per * rows;
+      svgS += '<g class="z" data-k="' + k + '"><rect class="zr" x="' + x + '" y="' + y + '" width="' + w + '" height="' + hgt + '" rx="10" fill="' + col + '" stroke="' + col + '"/>' +
+        '<text class="zl" x="' + (x + w / 2) + '" y="' + (y + 15) + '" text-anchor="middle">' + sh + ' · ' + here.length + '</text>';
+      here.slice(0, here.length > max ? max - 1 : max).forEach((it, i) => { svgS += '<text class="pk" data-n="' + it.num + '" x="' + (x + 5 + (i % per) * 20) + '" y="' + (y + 36 + Math.floor(i / per) * 21) + '">📦</text>'; });
+      if (here.length > max) svgS += '<text class="zl" x="' + (x + 8 + ((max - 1) % per) * 20) + '" y="' + (y + 34 + Math.floor((max - 1) / per) * 21) + '">+' + (here.length - max + 1) + '</text>';
+      svgS += '</g>';
+    });
+    $("cargaSvg").innerHTML = svgS + '</svg>';
+    $("cargaSvg").querySelectorAll(".pk").forEach(t => t.addEventListener("click", () => pkCard(byNum(+t.dataset.n))));
+    const g = $("cargaGuide"); g.innerHTML = "";
+    v.zones.forEach(([k, lab]) => {
+      const here = list.filter(it => plan.get(it.num) === k && !it.done);
+      const sec = document.createElement("div"); sec.className = "czs"; sec.dataset.k = k;
+      const h = document.createElement("h4"); h.innerHTML = '<span></span> <small>· ' + here.length + ' 📦</small>'; h.firstChild.textContent = lab; sec.append(h);
+      here.forEach(it => {
+        const r = document.createElement("div"); r.className = "cst" + (it.zona ? " pin" : ""); r.dataset.n = it.num; r.dataset.k = k;
+        const b = document.createElement("b"); b.textContent = stopTag(it); const sp = document.createElement("span"); sp.textContent = it.address;
+        r.append(b, sp); sec.append(r); dragRow(r);
+      });
+      if (!here.length) sec.insertAdjacentHTML("beforeend", '<div class="cempty">Soltá acá</div>');
+      g.append(sec);
+    });
+    if (!list.some(it => !it.done)) g.innerHTML = '<div class="cempty">Todavía no hay paquetes para cargar.</div>';
+  }
+  async function pkCard(it) {
+    if (!it) return;
+    const c = $("pkCard"), d = document.createElement("div");
+    const t = (cls, txt, tag = "div") => { const e = document.createElement(tag); if (cls) e.className = cls; e.textContent = txt; d.append(e); return e; };
+    t("id", "Parada " + stopTag(it));
+    t("muted", "N.º " + String(it.num).padStart(4, "0") + " · " + zonaLabel(cargaPlan().get(it.num)) + (it.extra ? " · " + (it.extra + 1) + " paquetes" : ""));
+    t("", it.address).style.fontSize = "1.05rem";
+    if (it.ref) t("muted", "🗒 " + it.ref);
+    const b = it.photo ? await fotos.get(it.num) : null;
+    if (b) { const im = document.createElement("img"); im.alt = "Foto del paquete " + code(it.num); im.src = URL.createObjectURL(b); d.append(im); }
+    else { const btn = t("btn", "📷 Sacar foto del paquete", "button"); btn.type = "button"; btn.addEventListener("click", () => { c.hidden = true; closeSheets(); openEdit(it); }); }
+    const x = t("btn", "Cerrar", "button"); x.type = "button";
+    const close = () => { const im = d.querySelector("img"); if (im) URL.revokeObjectURL(im.src); c.hidden = true; };
+    x.addEventListener("click", close);
+    c.onclick = (e) => { if (e.target === c) close(); };
+    c.innerHTML = ""; c.append(d); c.hidden = false;
+  }
+  // arrastrar: mantener apretado ~0,3 s, mover y soltar sobre otra zona (lista o dibujo)
+  let cDrag = null, cHot = null;
+  const cSetHot = (el) => { if (cHot) cHot.classList.remove("hot"); cHot = el; if (el) el.classList.add("hot"); };
+  function dragRow(r) {
+    let t = null, x0 = 0, y0 = 0;
+    const move = (x, y) => { const gh = $("cGhost"); gh.style.left = (x - 120) + "px"; gh.style.top = (y - 24) + "px";
+      const el = document.elementFromPoint(x, y); cSetHot(el ? (el.closest(".cst:not(.drag)") || el.closest(".czs") || el.closest("#cargaSvg .z")) : null); };
+    r.addEventListener("pointerdown", (e) => { x0 = e.clientX; y0 = e.clientY; try { r.setPointerCapture(e.pointerId); } catch {}
+      t = setTimeout(() => { cDrag = +r.dataset.n; r.classList.add("drag"); const gh = $("cGhost"); gh.innerHTML = r.innerHTML; gh.hidden = false; move(x0, y0); if (navigator.vibrate) try { navigator.vibrate(30); } catch {} }, 300); });
+    r.addEventListener("pointermove", (e) => { if (cDrag == null) { if (Math.hypot(e.clientX - x0, e.clientY - y0) > 8) clearTimeout(t); return; } move(e.clientX, e.clientY); });
+    const end = () => { clearTimeout(t); if (cDrag == null) return; const tg = cHot, it = byNum(cDrag); cSetHot(null); $("cGhost").hidden = true; cDrag = null;
+      if (tg && tg.dataset.k && it) { it.zona = tg.dataset.k; save(); $("cargaMsg").textContent = "Parada " + stopTag(it) + " guardada en " + zonaLabel(it.zona) + "."; }
+      renderCarga(); };
+    r.addEventListener("pointerup", end); r.addEventListener("pointercancel", end);
+  }
+  $("vehSel").addEventListener("change", () => { store.set("vehiculo", $("vehSel").value); renderCarga(); });
+  $("cargaReset").addEventListener("click", () => { items.forEach(it => delete it.zona); save(); $("cargaMsg").textContent = "Volviste a la sugerencia según el orden de la ruta."; renderCarga(); });
+  if (CARGA_ON) $("fabCarga").hidden = false;
 
   $("finishLater").addEventListener("click", () => { $("finish").hidden = true; });
   function newRoute() {
