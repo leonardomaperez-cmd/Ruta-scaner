@@ -508,7 +508,7 @@ input:disabled { opacity: .45; }
       <input id="startInput" type="text" placeholder="Vacío = desde donde estés al optimizar">
       <label class="check"><input id="hereChk" type="checkbox"> Salir desde mi ubicación actual</label>
       </div>
-      <label class="check"><input id="returnChk" type="checkbox"> Volver al punto de partida al final</label>
+      <label class="check" hidden><input id="returnChk" type="checkbox"> Volver al punto de partida al final</label><!-- sacado: la ruta nunca vuelve al inicio -->
       <label class="check" id="geminiAlwaysBox" hidden><input id="geminiAlwaysChk" type="checkbox"> Leer siempre con la IA (si no, lee primero ML Kit en el teléfono y la IA solo cuando no cierra)</label>
       <label class="check"><input id="zaChk" type="checkbox"> Letras de la Z a la A (la primera parada lleva la última letra)</label>
       <label class="check"><input id="arriveChk" type="checkbox"> Avisarme con voz al llegar a la próxima parada</label>
@@ -2058,7 +2058,7 @@ input:disabled { opacity: .45; }
         start = await whereAmI(8000);
         if (start) gotHere = true; else start = { lat: located[0].lat, lng: located[0].lng };
       }
-      const back = $("returnChk").checked;
+      const back = false; // la ruta termina en la última entrega (sin volver al inicio)
       if (!key) {
         say("Calculando la mejor ruta…");
         let res, note = "";
@@ -2280,9 +2280,7 @@ input:disabled { opacity: .45; }
     // al marcarla, la ruta se vuelve a ordenar desde donde estás
     if ($("hereChk").checked && items.some(it => !it.done)) { toast("Optimizando la ruta desde tu ubicación…"); await optimize(true); toast($("optStatus").textContent, /err/.test($("optStatus").className)); }
   });
-  // 2026-11: "Volver al punto de partida" pasa a venir desmarcado; se desmarca una vez en los teléfonos que ya lo tenían
-  if (!store.get("backReset1", false)) { store.set("back", false); store.set("backReset1", true); }
-  $("returnChk").checked = store.get("back", false);
+  store.set("back", false); $("returnChk").checked = false;
   $("returnChk").addEventListener("change", () => store.set("back", $("returnChk").checked));
   const aiSync = () => { $("llamaBox").hidden = $("aiSel").value !== "llama"; $("geminiBox").hidden = $("aiSel").value !== "gemini"; };
   $("aiSel").value = store.get("ai", "gemini"); if (!$("aiSel").value) $("aiSel").value = "gemini"; aiSync();
