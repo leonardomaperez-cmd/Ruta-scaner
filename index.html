@@ -2280,6 +2280,8 @@ input:disabled { opacity: .45; }
     // al marcarla, la ruta se vuelve a ordenar desde donde estás
     if ($("hereChk").checked && items.some(it => !it.done)) { toast("Optimizando la ruta desde tu ubicación…"); await optimize(true); toast($("optStatus").textContent, /err/.test($("optStatus").className)); }
   });
+  // 2026-11: "Volver al punto de partida" pasa a venir desmarcado; se desmarca una vez en los teléfonos que ya lo tenían
+  if (!store.get("backReset1", false)) { store.set("back", false); store.set("backReset1", true); }
   $("returnChk").checked = store.get("back", false);
   $("returnChk").addEventListener("change", () => store.set("back", $("returnChk").checked));
   const aiSync = () => { $("llamaBox").hidden = $("aiSel").value !== "llama"; $("geminiBox").hidden = $("aiSel").value !== "gemini"; };
