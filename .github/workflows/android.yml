@@ -3,7 +3,7 @@ name: App de Android (APK)
 on:
   push:
     branches: [main]
-    paths: ["index.html", "img/**", "capacitor/**", ".github/workflows/android.yml"]
+    paths: ["index.html", "beta/index.html", "img/**", "capacitor/**", ".github/workflows/android.yml"]
   workflow_dispatch:
 
 permissions:
@@ -37,7 +37,10 @@ jobs:
 
       - name: Copiar la app web
         run: |
-          mkdir -p www && cp ../index.html ../manifest.webmanifest www/ && cp -r ../img www/img
+          # la APK usa la versión beta (cuenta, plan gratis/pago con TomTom, Carga, voz, escudo)
+          mkdir -p www && cp ../beta/index.html ../manifest.webmanifest www/ && cp -r ../img www/img
+          sed -i -e 's#"\.\./img/#"img/#g' -e 's#"\.\./manifest\.webmanifest"#"manifest.webmanifest"#' -e 's#<title>(Prueba) Ruta Escáner</title>#<title>Ruta Escáner</title>#' www/index.html
+          ! grep -n '"\.\./' www/index.html
           # plugins nativos (cámara, GPS en segundo plano, voz, avisos) para la página
           npx esbuild native-entry.js --bundle --format=iife --minify --outfile=www/native.js
           sed -i 's#<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet#<script src="native.js"></script>\n<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet#' www/index.html
