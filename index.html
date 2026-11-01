@@ -1859,7 +1859,7 @@ input:disabled { opacity: .45; }
           if (fuente && box.children.length) { const li = document.createElement("li"); li.className = "src"; li.textContent = "© " + fuente; box.append(li); }
           box.hidden = !box.children.length;
         } catch { hide(); }
-      }, 350);
+      }, 500); // medio segundo sin tipear: ahorra cupo de TomTom
     });
     input.addEventListener("blur", () => setTimeout(hide, 200));
   }
