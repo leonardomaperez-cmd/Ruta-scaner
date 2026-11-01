@@ -422,7 +422,7 @@ input:disabled { opacity: .45; }
    <div class="wrap">
     <div class="card">
       <button id="optBtn" class="btn btn-primary" type="button">Optimizar ruta</button>
-      <button id="optHereBtn" class="mini" type="button" style="margin-top:6px;width:100%">📍 Optimizar desde donde estoy</button>
+      <button id="optHereBtn" class="mini" type="button" style="margin-top:6px;width:100%" hidden>📍 Optimizar desde donde estoy</button>
       <div class="status" id="optStatus" role="status"></div>
       <div class="summary" id="summary" hidden></div>
       <a id="navAll" class="btn" target="_blank" rel="noopener" hidden>Navegar en Google Maps (próximas 10)</a>
@@ -1048,7 +1048,7 @@ input:disabled { opacity: .45; }
       const loc = (it) => typeof it.lat === "number" ? it.lat + "," + it.lng : it.address;
       u.searchParams.set("destination", loc(pending[pending.length - 1]));
       if (pending.length > 1) u.searchParams.set("waypoints", pending.slice(0, -1).map(loc).join("|"));
-      $("navAll").href = u.toString(); $("navAll").hidden = false;
+      $("navAll").href = u.toString(); $("navAll").hidden = true; // sacado: Leo no usa Google Maps para toda la ruta
     } else $("navAll").hidden = true;
   }
   function refresh(fit) { render(); drawMap(fit); renderReview(); checkFinished(); if (!$("p-carga").hidden) renderCarga(); }
