@@ -543,7 +543,9 @@ input:disabled { opacity: .45; }
     </div>
     <div class="card" id="accountCard" hidden>
       <span id="accountWho"></span>
+      <span class="note" id="planInfo" hidden></span>
       <a class="btn payLink" target="_blank" rel="noopener" hidden>Pagar suscripción</a>
+      <button class="btn" id="planCheck" type="button" hidden>Ya pagué, revisar</button>
       <button class="btn" id="logoutBtn" type="button" hidden>Cerrar sesión</button>
     </div>
     <p class="note" id="nativeInfo" hidden></p>
@@ -2741,9 +2743,10 @@ const CUENTA = {
       throw new Error(msg || "el servidor de lectura no respondió");
     };
     // búsqueda de direcciones con las claves del dueño (función «buscar-direccion»); null = usar Photon/Nominatim
-    let buscarOff = false;
+    // solo las cuentas pagas (activo) buscan con TomTom; las gratis usan Photon/Nominatim
+    let buscarOff = false, premium = false;
     window.buscarEnServidor = async (tipo, q, near) => {
-      if (buscarOff) return null;
+      if (buscarOff || !premium) return null;
       const body = { tipo, q, pais: (document.getElementById("countryInput").value || "AR").trim() };
       if (near) { body.lat = Number(near[0]); body.lon = Number(near[1]); }
       try {
@@ -2765,14 +2768,21 @@ const CUENTA = {
       $("authForm").hidden = true; $("authPay").hidden = true;
       const { data, error } = await sb.from("perfiles").select("activo").eq("id", user.id).maybeSingle();
       $("accountCard").hidden = false; $("logoutBtn").hidden = false; $("accountWho").textContent = "Cuenta: " + user.email;
-      if (!error && data && data.activo) { $("auth").hidden = true; return; }
-      $("auth").hidden = false; $("authPay").hidden = false; $("authWho").textContent = user.email;
-      if (!CUENTA.payUrl) say("authPayMsg", "Pedile el link de pago a quien te dio la app.");
-      else say("authPayMsg", error ? "No se pudo revisar la cuenta (" + error.message + ")." : "", error ? "err" : "");
+      // con cuenta ya se usa la app: gratis sin TomTom; la cuenta paga (activo) suma TomTom
+      premium = !error && !!(data && data.activo); buscarOff = false;
+      $("auth").hidden = true;
+      $("planInfo").hidden = false;
+      $("planInfo").textContent = premium ? "⭐ Plan pago: las direcciones se buscan con TomTom." : "Plan gratis: las direcciones se buscan con mapas gratuitos. Pagá la suscripción para buscar con TomTom, más preciso.";
+      document.querySelectorAll("#accountCard .payLink").forEach(a => { a.hidden = premium || !CUENTA.payUrl; });
+      $("planCheck").hidden = premium;
     }
     async function logout() { await sb.auth.signOut(); location.reload(); }
     $("authOut").addEventListener("click", logout);
     $("logoutBtn").addEventListener("click", logout);
+    $("planCheck").addEventListener("click", async () => {
+      const { data } = await sb.auth.getUser();
+      if (data && data.user) { await check(data.user); if (!premium) $("planInfo").textContent += " Todavía no figura el pago; si ya pagaste, puede tardar un rato."; }
+    });
     $("authCheck").addEventListener("click", async () => {
       say("authPayMsg", "Revisando…");
       const { data } = await sb.auth.getUser();
