@@ -1667,18 +1667,24 @@ input:disabled { opacity: .45; }
 
   // ---------- ubicar direcciones: TomTom con clave, OpenStreetMap (Nominatim) sin clave ----------
   let lastNominatim = 0;
+  // primero busca cerca (unos 60 km alrededor de tu ubicación o del mapa); si no encuentra, en todo el país
   async function geocodeOSM(text) {
-    const wait = 1100 - (Date.now() - lastNominatim); // Nominatim pide máximo 1 consulta por segundo
-    if (wait > 0) await new Promise(r => setTimeout(r, wait));
-    lastNominatim = Date.now();
-    const u = new URL("https://nominatim.openstreetmap.org/search");
-    u.searchParams.set("format", "jsonv2"); u.searchParams.set("limit", "1"); u.searchParams.set("q", text);
-    u.searchParams.set("accept-language", "es");
-    const cc = $("countryInput").value.trim().toLowerCase(); if (/^[a-z]{2}$/.test(cc)) u.searchParams.set("countrycodes", cc);
-    const r = await fetch(u);
-    if (!r.ok) throw new Error("el buscador de OpenStreetMap respondió " + r.status);
-    const j = await r.json();
-    return j && j[0] ? { lat: Number(j[0].lat), lng: Number(j[0].lon), label: j[0].display_name || "" } : null;
+    const near = meLast || (map && map.getCenter && [map.getCenter().lat, map.getCenter().lng]);
+    const one = async (box) => {
+      const wait = 1100 - (Date.now() - lastNominatim); // Nominatim pide máximo 1 consulta por segundo
+      if (wait > 0) await new Promise(r => setTimeout(r, wait));
+      lastNominatim = Date.now();
+      const u = new URL("https://nominatim.openstreetmap.org/search");
+      u.searchParams.set("format", "jsonv2"); u.searchParams.set("limit", "1"); u.searchParams.set("q", text);
+      u.searchParams.set("accept-language", "es");
+      const cc = $("countryInput").value.trim().toLowerCase(); if (/^[a-z]{2}$/.test(cc)) u.searchParams.set("countrycodes", cc);
+      if (box) { u.searchParams.set("viewbox", [near[1] - 0.6, near[0] + 0.6, near[1] + 0.6, near[0] - 0.6].map(x => x.toFixed(4)).join(",")); u.searchParams.set("bounded", "1"); }
+      const r = await fetch(u);
+      if (!r.ok) throw new Error("el buscador de OpenStreetMap respondió " + r.status);
+      const j = await r.json();
+      return j && j[0] ? { lat: Number(j[0].lat), lng: Number(j[0].lon), label: j[0].display_name || "" } : null;
+    };
+    return (near && await one(true)) || await one(false);
   }
   // «Mitre 500 entre Rivadavia y Colón»: las entre calles no sirven para buscar, se sacan (quedan escritas en la dirección)
   const BETWEEN = /\s*[,(-]?\s*\b(?:entre(?!\s+r[ií]os\b)|e\/|esq\.?|esquina|casi)(?:\s|$)[^,)]*\)?/i;
