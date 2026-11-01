@@ -1810,14 +1810,14 @@ input:disabled { opacity: .45; }
     input.addEventListener("input", () => {
       clearTimeout(t);
       const full = input.value.replace(/\s+/g, " ").trim(), sb = splitBetween(full), q = sb.addr;
-      if (q.length < 4 || picked.has(full) || picked.has(q) || (cornerPlan(full) && !sb.between)) { hide(); return; }
+      if (q.length < 2 || picked.has(full) || picked.has(q) || (cornerPlan(full) && !sb.between)) { hide(); return; }
       t = setTimeout(async () => {
         const my = ++seq;
         try {
           const near = meLast || (map && map.getCenter && [map.getCenter().lat, map.getCenter().lng]);
           const seen = new Set(), list = []; let fuente = "";
-          // con cuenta activa: TomTom, HERE, Geoapify o LocationIQ desde tu Supabase; si no hay, Photon
-          const d = window.buscarEnServidor ? await window.buscarEnServidor("sugerir", q, near) : null;
+          // de 2 a 3 letras: Photon (gratis). Desde la 4ª, con cuenta activa: TomTom, HERE, Geoapify o LocationIQ desde tu Supabase; si no hay, Photon
+          const d = window.buscarEnServidor && q.length >= 4 ? await window.buscarEnServidor("sugerir", q, near) : null;
           if (my !== seq) return;
           if (d && d.resultados.length) {
             fuente = FUENTES[d.fuente] || d.fuente;
