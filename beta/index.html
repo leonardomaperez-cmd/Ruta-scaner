@@ -484,9 +484,11 @@ input:disabled { opacity: .45; }
    <div class="sheet-head"><h2>Ajustes</h2><button class="x" type="button" data-close aria-label="Cerrar">✕</button></div>
    <div class="wrap">
     <div class="card">
+      <div hidden><!-- clave de TomTom en el teléfono: sacada, TomTom va por el servidor (Supabase) -->
       <label class="label" for="keyInput">Clave de TomTom (opcional)</label>
       <input id="keyInput" type="password" autocomplete="off" placeholder="Pega tu clave (API key)">
       <span class="note">Sin clave, la app usa mapas gratuitos de OpenStreetMap para ubicar y ordenar las paradas, sin cuenta. Con una clave de TomTom (gratis en developer.tomtom.com) la ruta tiene en cuenta el tráfico. Se guarda solo en este teléfono.</span>
+      </div>
       <div id="aiBox" hidden><!-- lectura con IA apagada por ahora: se lee solo con el OCR del teléfono -->
       <label class="label" for="aiSel">Inteligencia artificial que lee la etiqueta</label>
       <select id="aiSel"><option value="gemini">Gemini de Google</option><option value="llama">Qwen por Groq (de pago)</option></select>
@@ -501,9 +503,11 @@ input:disabled { opacity: .45; }
       <span class="note">Opcional y gratis en aistudio.google.com. Con ella, la foto la lee Gemini y saca solo la dirección del destinatario. Sin ella, se lee en el teléfono. En el plan gratuito Google puede usar las fotos para mejorar sus productos.</span>
       </div>
       </div>
+      <div hidden><!-- punto de partida sacado: la ruta sale siempre desde donde estés -->
       <label class="label" for="startInput">Punto de partida</label>
       <input id="startInput" type="text" placeholder="Vacío = desde donde estés al optimizar">
       <label class="check"><input id="hereChk" type="checkbox"> Salir desde mi ubicación actual</label>
+      </div>
       <label class="check"><input id="returnChk" type="checkbox"> Volver al punto de partida al final</label>
       <label class="check" id="geminiAlwaysBox" hidden><input id="geminiAlwaysChk" type="checkbox"> Leer siempre con la IA (si no, lee primero ML Kit en el teléfono y la IA solo cuando no cierra)</label>
       <label class="check"><input id="zaChk" type="checkbox"> Letras de la Z a la A (la primera parada lleva la última letra)</label>
@@ -2035,7 +2039,7 @@ input:disabled { opacity: .45; }
       if (here) {
         say("Buscando tu ubicación actual…");
         start = await whereAmI();
-        if (!start) { say("No pude obtener tu ubicación. Activá la ubicación del teléfono o escribí el punto de partida.", "err"); return; }
+        if (!start) { say("No pude obtener tu ubicación. Activá la ubicación del teléfono.", "err"); return; }
       } else if (startText) { say("Ubicando el punto de partida…"); start = await geocode(startText, key); if (!start) { say("No encontré el punto de partida. Escríbelo con calle, número y ciudad.", "err"); return; } }
       else {
         // sin punto de partida escrito: sale desde donde estás ahora; si el teléfono no da la ubicación, desde la primera parada
@@ -2255,6 +2259,8 @@ input:disabled { opacity: .45; }
     $(id).value = store.get(k, "");
     $(id).addEventListener("change", () => store.set(k, $(id).value.trim()));
   });
+  // sin clave de TomTom ni punto de partida en el teléfono (se sacaron de Ajustes): se borran los que hubiera guardados
+  ["keyInput", "startInput"].forEach(id => { $(id).value = ""; }); store.set("key", ""); store.set("start", ""); store.set("startHere", false);
   if (store.get("country", null) === null) { $("countryInput").value = "AR"; store.set("country", "AR"); }
   const hereSync = () => { $("startInput").disabled = $("hereChk").checked; };
   $("hereChk").checked = store.get("startHere", false); hereSync();
