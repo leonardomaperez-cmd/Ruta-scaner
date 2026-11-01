@@ -10,11 +10,13 @@ create table if not exists public.api_servicios (
   activo boolean not null default true
 );
 insert into public.api_servicios (servicio, orden, limite_dia) values
-  ('tomtom', 1, 2400),      -- gratis: unos 2.500 por día
+  ('tomtom', 1, 650),       -- gratis: 20.000 por mes (Geocoding API)
   ('here', 2, 900),         -- gratis: unos 30.000 por mes
   ('geoapify', 3, 2900),    -- gratis: unos 3.000 por día
   ('locationiq', 4, 4900)   -- gratis: unos 5.000 por día
 on conflict (servicio) do nothing;
+-- TomTom pasó a 20.000 gratis por mes: si la tabla ya existía con 2400, se baja a 650 por día
+update public.api_servicios set limite_dia = 650 where servicio = 'tomtom' and limite_dia = 2400;
 
 create table if not exists public.api_uso (
   servicio text not null references public.api_servicios (servicio) on delete cascade,

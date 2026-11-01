@@ -1822,8 +1822,8 @@ input:disabled { opacity: .45; }
         try {
           const near = meLast || (map && map.getCenter && [map.getCenter().lat, map.getCenter().lng]);
           const seen = new Set(), list = []; let fuente = "";
-          // de 2 a 3 letras: Photon (gratis). Desde la 4ª, con cuenta activa: TomTom, HERE, Geoapify o LocationIQ desde tu Supabase; si no hay, Photon
-          const d = window.buscarEnServidor && q.length >= 4 ? await window.buscarEnServidor("sugerir", q, near) : null;
+          // sugerencias siempre con Photon (gratis); TomTom se usa solo para ubicar la dirección final (ahorra cupo)
+          const d = null;
           if (my !== seq) return;
           if (d && d.resultados.length) {
             fuente = FUENTES[d.fuente] || d.fuente;

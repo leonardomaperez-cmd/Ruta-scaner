@@ -37,10 +37,11 @@ async function get(url: string) {
 
 const SERVICIOS: Record<string, (a: Ask, key: string) => Promise<Hit[]>> = {
   async tomtom(a, key) {
-    const u = new URL(`https://api.tomtom.com/search/2/${a.tipo === "sugerir" ? "search" : "geocode"}/${encodeURIComponent(a.q)}.json`);
+    // siempre Geocoding API (20.000 gratis por mes); la Search API vieja solo da 2.500 por mes
+    const u = new URL(`https://api.tomtom.com/search/2/geocode/${encodeURIComponent(a.q)}.json`);
     u.searchParams.set("key", key); u.searchParams.set("limit", String(a.n)); u.searchParams.set("language", "es-419");
     u.searchParams.set("countrySet", a.pais);
-    if (a.tipo === "sugerir") { u.searchParams.set("typeahead", "true"); u.searchParams.set("idxSet", "PAD,Addr,Str,Geo"); }
+    if (a.tipo === "sugerir") u.searchParams.set("typeahead", "true");
     if (near(a)) { u.searchParams.set("lat", String(a.lat)); u.searchParams.set("lon", String(a.lon)); }
     const j = await get(u.toString());
     return (j.results || []).filter((r: any) => r.position).map((r: any) => {
