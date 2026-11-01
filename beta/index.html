@@ -1851,9 +1851,11 @@ input:disabled { opacity: .45; }
             const street = p.street ? p.street + (p.housenumber ? " " + p.housenumber : "") : (p.name || "");
             const place = [p.district || p.locality, p.city || p.county, p.state].filter((x, i, a) => x && a.indexOf(x) === i && x !== street).join(", ");
             if (!street) return;
-            const text = street + (place ? ", " + place : ""), key = text.toLowerCase();
+            // sugerencia sin altura (solo la calle) y el chofer escribió un número: se mantiene su número
+            const num = !p.housenumber && p.street && (q.match(/\b(\d{1,5})\b/) || [])[1];
+            const text = (num ? street + " " + num : street) + (place ? ", " + place : ""), key = text.toLowerCase();
             if (seen.has(key)) return; seen.add(key);
-            list.push({ street, place, text, lat: c[1], lng: c[0] });
+            list.push({ street: num ? street + " " + num : street, place, text, lat: c[1], lng: c[0], sinAltura: !!num });
           });
           }
           box.textContent = "";
@@ -1862,7 +1864,8 @@ input:disabled { opacity: .45; }
             if (o.place) { const sm = document.createElement("small"); sm.textContent = o.place; li.append(sm); }
             li.addEventListener("pointerdown", (e) => {
               e.preventDefault();
-              picked.set(o.text, { lat: o.lat, lng: o.lng, label: o.text });
+              // si la sugerencia no traía la altura, no se usa su punto (es el medio de la calle): se ubica con el número
+              if (!o.sinAltura) picked.set(o.text, { lat: o.lat, lng: o.lng, label: o.text });
               input.value = o.text + (sb.between ? " " + sb.between : ""); hide(); onPick && onPick(o);
               input.dispatchEvent(new Event("change"));
             });
