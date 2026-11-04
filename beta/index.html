@@ -1079,7 +1079,15 @@ input:disabled { opacity: .45; }
       return await new Promise(r => c.toBlob(b => r(b || file), "image/jpeg", 0.9));
     } catch { return file; }
   }
-  let ocr = null;
+  let ocr = null, ocrWarm = null;
+  // Tesseract tarda en arrancar (baja el idioma y el motor la primera vez). Se prepara apenas abre la app,
+  // así la primera etiqueta no espera. En la APK no hace falta: lee ML Kit.
+  function warmOCR() {
+    if (ocr || ocrWarm || plug("LectorTexto") || !window.Tesseract) return ocrWarm;
+    ocrWarm = Tesseract.createWorker("spa", 1).then(w => (ocr = w)).catch(e => { console.warn("OCR", e); ocrWarm = null; return null; });
+    return ocrWarm;
+  }
+  window.addEventListener("load", () => setTimeout(warmOCR, 1500));
   const tidyLines = (arr) => arr.map(l => String(l).replace(/[|_~«»]+/g, " ").replace(/\s+/g, " ").trim()).filter(l => l.length > 2);
   const toDataURL = (b) => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = no; r.readAsDataURL(b); });
   // En la app de Android lee ML Kit de Google (rápido, sin internet); en el navegador, Tesseract.
@@ -1090,7 +1098,8 @@ input:disabled { opacity: .45; }
       catch (e) { console.warn("ML Kit", e); }
     }
     if (!window.Tesseract) throw new Error("no se pudo cargar el lector");
-    if (!ocr) ocr = await Tesseract.createWorker("spa", 1, { logger: m => { if (typeof m.progress === "number") onP(m.progress); } });
+    if (!ocr) await warmOCR();
+    if (!ocr) throw new Error("no se pudo cargar el lector");
     const { data } = await ocr.recognize(img);
     return tidyLines(String(data.text || "").split("\n"));
   }
@@ -1388,6 +1397,7 @@ input:disabled { opacity: .45; }
   async function openScanner() {
     $("scanner").hidden = false; $("stage").hidden = true; $("frozen").hidden = true; $("scanControls").hidden = false;
     $("scanHint").textContent = "Encuadra la dirección dentro del recuadro y toca el botón";
+    warmOCR();
     try {
       // en la app de Android hay que pedir el permiso de cámara del teléfono antes de abrirla
       const CAM = plug("Camera");
