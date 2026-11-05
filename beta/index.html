@@ -548,6 +548,13 @@ input:disabled { opacity: .45; }
       <button class="btn" id="planCheck" type="button" hidden>Ya pagué, revisar</button>
       <button class="btn" id="logoutBtn" type="button" hidden>Cerrar sesión</button>
     </div>
+    <div class="card" id="mlCard" hidden>
+      <strong>Mercado Libre Flex</strong>
+      <span class="note">Mandale este link a cada vendedor. Cuando lo abra y toque «Permitir», al escanear el QR de sus envíos Flex la dirección sale directo de Mercado Libre.</span>
+      <button class="btn" id="mlLinkBtn" type="button">🔗 Link para un vendedor</button>
+      <span class="note" id="mlMsg"></span>
+      <span class="note" id="mlList"></span>
+    </div>
     <p class="note" id="nativeInfo" hidden></p>
     <button class="btn" id="permsBtn" type="button" hidden>Revisar permisos de la app</button>
     <p class="note">Las paradas se guardan en este teléfono. Exporta el CSV si quieres guardarlas aparte.</p>
@@ -1288,7 +1295,10 @@ input:disabled { opacity: .45; }
   // QR de la etiqueta (Mercado Libre Flex trae un JSON con "id" del envío). Sirve para reconocer un paquete ya guardado.
   let jsQRp = null;
   const loadJsQR = () => jsQRp || (jsQRp = new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"; sc.onload = () => res(window.jsQR); sc.onerror = () => { jsQRp = null; rej(new Error("jsQR")); }; document.head.append(sc); }));
+  // QR de Mercado Libre Flex: {"id":"…","sender_id":…,"hash_code":"…"}; lo guarda para pedir la dirección a Mercado Libre
+  let qrFlex = null;
   async function readQR(src) {
+    qrFlex = null;
     try {
       const bmp = src instanceof HTMLCanvasElement ? src : await createImageBitmap(src);
       let raw = "";
@@ -1304,7 +1314,7 @@ input:disabled { opacity: .45; }
         if (r) raw = r.data;
       }
       raw = String(raw || "").trim(); if (!raw) return "";
-      try { const o = JSON.parse(raw); if (o && o.id != null) return String(o.id); } catch {}
+      try { const o = JSON.parse(raw); if (o && o.id != null) { if (o.sender_id != null) qrFlex = { id: String(o.id), sender_id: String(o.sender_id) }; return String(o.id); } } catch {}
       return raw;
     } catch { return ""; }
   }
@@ -1461,7 +1471,12 @@ input:disabled { opacity: .45; }
   // Lee la etiqueta: en Android ML Kit primero; si no cierra, la IA elegida; si no hay, el lector del teléfono.
   // Por ahora la etiqueta se lee solo con el OCR del teléfono (ML Kit en la APK, Tesseract en la web). true vuelve a usar la IA.
   const AI_ON = false;
-  async function readLabel(file) {
+  async function readLabel(file, flex) {
+    // envío Flex de un vendedor vinculado: la dirección sale directo de Mercado Libre, sin leer la etiqueta
+    if (flex && window.envioML) {
+      const m = await window.envioML(flex.id, flex.sender_id).catch(() => null);
+      if (m && m.address) return { address: m.address, ref: m.ref || "", lat: m.lat, lng: m.lng, by: "Mercado Libre" };
+    }
     const aiv = $("aiSel").value, useAlt = aiv !== "gemini", AI = { llama: "Qwen" }[aiv] || "Gemini";
     const ownKey = $({ llama: "groqInput" }[aiv] || "geminiInput").value.trim(), gkey = AI_ON ? ownKey || (!useAlt && window.leerEnServidor ? "servidor" : "") : "";
     const ML = plug("LectorTexto") && !(AI_ON && $("geminiAlwaysChk").checked);
@@ -1482,7 +1497,7 @@ input:disabled { opacity: .45; }
   }
   async function scanToItem(file, qrSrc) {
     $("frozen").hidden = true; $("scanControls").hidden = false;
-    const qr = await readQR(qrSrc || file);
+    const qr = await readQR(qrSrc || file), flex = qrFlex;
     if (qr) {
       const known = items.find(it => it.qr === qr);
       if (known) { $("stage").hidden = false; $("previewBox").hidden = true; $("lines").hidden = true; $("scanControls").hidden = true; showVerify(known); return; }
@@ -1490,7 +1505,7 @@ input:disabled { opacity: .45; }
     if (scanInto) {
       // abierto desde la burbuja: lo leído completa el formulario
       reading++; scanBusy();
-      let r = null; try { r = await readLabel(file); } catch (e) { console.warn(e); } finally { reading--; scanBusy(); }
+      let r = null; try { r = await readLabel(file, flex); } catch (e) { console.warn(e); } finally { reading--; scanBusy(); }
       if (!r || !r.address) { toast("No leí la dirección. Probá de nuevo con la etiqueta más cerca.", true); return; }
       const fill = scanInto; closeScanner(); fill(r); toast("✓ Leída: " + r.address + ". Revisala y tocá Guardar.");
       return;
@@ -1500,12 +1515,13 @@ input:disabled { opacity: .45; }
     items.push(it); save();
     reading++; scanBusy();
     try {
-      const r = await readLabel(file);
+      const r = await readLabel(file, flex);
       if (!r.address) { items = items.filter(x => x !== it); save(); refresh(false); toast("No leí la dirección. Probá de nuevo con la etiqueta más cerca.", true); return; }
       it.address = r.address; if (r.ref) it.ref = r.ref;
+      if (r.lat != null && r.lng != null) { it.lat = r.lat; it.lng = r.lng; }
       save(); refresh(false);
-      toast("✓ " + code(it.num) + " · " + r.address);
-      { try { const g = await geocode(r.address, $("keyInput").value.trim()); if (g) { it.lat = g.lat; it.lng = g.lng; save(); refresh(false); } } catch {} }
+      toast("✓ " + code(it.num) + " · " + r.address + (r.by === "Mercado Libre" ? " (de Mercado Libre)" : ""));
+      if (it.lat == null) { try { const g = await geocode(r.address, $("keyInput").value.trim()); if (g) { it.lat = g.lat; it.lng = g.lng; save(); refresh(false); } } catch {} }
     } catch (e) { items = items.filter(x => x !== it); save(); refresh(false); toast("No se pudo leer la etiqueta (" + (e.message || e) + ")", true); }
     finally { reading--; scanBusy(); }
   }
@@ -2774,6 +2790,36 @@ const CUENTA = {
         return data && Array.isArray(data.resultados) ? data : null;
       } catch { return null; }
     };
+    // Mercado Libre: vendedores vinculados y dirección de sus envíos Flex (función «mercadolibre»)
+    let mlOff = false;
+    const ml = async (body) => {
+      const { data, error } = await sb.functions.invoke("mercadolibre", { body });
+      if (error) { let st = 0, msg = ""; try { st = error.context.status; msg = (await error.context.json()).error || ""; } catch {} if (st === 404) mlOff = true; throw new Error(msg || "Mercado Libre no respondió"); }
+      return data;
+    };
+    window.envioML = async (id, sender_id) => {
+      if (mlOff) return null;
+      const d = await ml({ accion: "envio", id, sender_id });
+      return d && d.encontrado ? d : null;
+    };
+    async function mlListar() {
+      try {
+        const d = await ml({ accion: "vendedores" }), vs = (d && d.vendedores) || [];
+        $("mlList").textContent = vs.length ? "Vinculados: " + vs.map(v => v.apodo).join(", ") : "Todavía no hay vendedores vinculados.";
+      } catch { $("mlList").textContent = ""; }
+    }
+    $("mlLinkBtn").addEventListener("click", async () => {
+      $("mlLinkBtn").disabled = true; $("mlMsg").textContent = "Creando el link…";
+      try {
+        const d = await ml({ accion: "link" });
+        const txt = "Hola! Para que pueda ver la dirección de tus envíos Flex al escanearlos, entrá a este link y tocá «Permitir» (es una sola vez): " + d.url;
+        if (navigator.share) { try { await navigator.share({ text: txt }); $("mlMsg").textContent = "Link listo. Sirve para un solo vendedor."; return; } catch {} }
+        try { await navigator.clipboard.writeText(d.url); } catch {}
+        $("mlMsg").innerHTML = ""; const a = document.createElement("a"); a.href = "https://wa.me/?text=" + encodeURIComponent(txt); a.target = "_blank"; a.rel = "noopener"; a.className = "btn"; a.textContent = "Mandar por WhatsApp";
+        $("mlMsg").append("Link copiado. Sirve para un solo vendedor. ", a);
+      } catch (e) { $("mlMsg").textContent = "No se pudo crear el link: " + (e.message || e); }
+      finally { $("mlLinkBtn").disabled = false; }
+    });
     const err = (e) => {
       const m = String(e && e.message || e);
       if (/invalid login/i.test(m)) return "Correo o contraseña incorrectos.";
@@ -2794,6 +2840,7 @@ const CUENTA = {
       $("planInfo").textContent = premium ? "⭐ Plan pago: las direcciones se buscan con TomTom." : "Plan gratis: las direcciones se buscan con mapas gratuitos. Pagá la suscripción para buscar con TomTom, más preciso.";
       document.querySelectorAll("#accountCard .payLink").forEach(a => { a.hidden = premium || !CUENTA.payUrl; });
       $("planCheck").hidden = premium;
+      $("mlCard").hidden = false; mlListar();
     }
     async function logout() { await sb.auth.signOut(); location.reload(); }
     $("authOut").addEventListener("click", logout);
