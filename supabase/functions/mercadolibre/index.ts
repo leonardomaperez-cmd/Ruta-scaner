@@ -143,18 +143,23 @@ Deno.serve(async (req) => {
   if (accion === "envio") {
     const id = String(b?.id || "").replace(/\D/g, ""), sender = String(b?.sender_id || "").replace(/\D/g, "");
     if (!id) return answer(400, { error: "falta el número de envío" });
-    let q = admin.from("ml_vinculos").select("ml_user_id, ml_vendedores(*)").eq("chofer", quien);
-    if (sender) q = q.eq("ml_user_id", Number(sender));
-    const { data: vs } = await q;
-    for (const v of vs || []) {
+    // primero la cuenta del vendedor del QR; después cualquier otra cuenta vinculada por este chofer
+    // (por ejemplo su propia cuenta de chofer Flex, por si Mercado Libre le muestra los envíos que tiene asignados)
+    const { data: todas } = await admin.from("ml_vinculos").select("ml_user_id, ml_vendedores(*)").eq("chofer", quien);
+    const vs = (todas || []).slice().sort((a: any, b: any) => (String(b.ml_user_id) === sender ? 1 : 0) - (String(a.ml_user_id) === sender ? 1 : 0));
+    const prueba = !!b?.prueba, intentos: unknown[] = [];
+    for (const v of vs) {
       const vend = (v as any).ml_vendedores; if (!vend) continue;
-      const tk = await tokenDe(vend); if (!tk) continue;
+      const tk = await tokenDe(vend);
+      if (!tk) { intentos.push({ cuenta: vend.apodo || v.ml_user_id, estado: "sin token (volver a vincular)" }); continue; }
       const r = await fetch(`${API}/shipments/${id}`, { headers: { Authorization: "Bearer " + tk, "x-format-new": "true" } });
-      if (!r.ok) continue;
-      const d = direccion(await r.json());
-      if (d.address) return answer(200, { encontrado: true, vendedor: vend.apodo || "", ...d });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { intentos.push({ cuenta: vend.apodo || v.ml_user_id, estado: r.status, mensaje: j.message || j.error || "" }); continue; }
+      const d = direccion(j);
+      intentos.push({ cuenta: vend.apodo || v.ml_user_id, estado: r.status, mensaje: d.address ? "trae dirección" : "sin dirección en la respuesta" });
+      if (d.address) return answer(200, { encontrado: true, vendedor: vend.apodo || "", ...d, ...(prueba ? { intentos } : {}) });
     }
-    return answer(200, { encontrado: false, vinculado: (vs || []).length > 0 });
+    return answer(200, { encontrado: false, vinculado: vs.length > 0, ...(prueba ? { intentos } : {}) });
   }
 
   return answer(400, { error: "acción desconocida" });

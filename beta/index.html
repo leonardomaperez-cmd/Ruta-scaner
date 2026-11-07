@@ -552,6 +552,11 @@ input:disabled { opacity: .45; }
       <strong>Mercado Libre Flex</strong>
       <span class="note">Mandale este link a cada vendedor. Cuando lo abra y toque «Permitir», al escanear el QR de sus envíos Flex la dirección sale directo de Mercado Libre.</span>
       <button class="btn" id="mlLinkBtn" type="button">🔗 Link para un vendedor</button>
+      <span class="note">Prueba: conectá tu propia cuenta de chofer Flex y escaneá el QR de un paquete que tengas asignado, para ver si Mercado Libre te da la dirección.</span>
+      <button class="btn" id="mlMineBtn" type="button">👤 Conectar mi cuenta de Mercado Libre</button>
+      <button class="btn" id="mlTestBtn" type="button">🧪 Probar con este QR</button>
+      <input type="file" id="mlTestFile" accept="image/*" capture="environment" hidden>
+      <span class="note" id="mlTestMsg" style="white-space:pre-line"></span>
       <span class="note" id="mlMsg"></span>
       <span class="note" id="mlList"></span>
     </div>
@@ -1298,6 +1303,8 @@ input:disabled { opacity: .45; }
   const loadJsQR = () => jsQRp || (jsQRp = new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"; sc.onload = () => res(window.jsQR); sc.onerror = () => { jsQRp = null; rej(new Error("jsQR")); }; document.head.append(sc); }));
   // QR de Mercado Libre Flex: {"id":"…","sender_id":…,"hash_code":"…"}; lo guarda para pedir la dirección a Mercado Libre
   let qrFlex = null;
+  // para el botón de prueba de Ajustes: lee el QR de una foto y devuelve {id, sender_id} (o {id} si no es Flex)
+  window.leerQRFlex = async (file) => { const id = await readQR(file); return qrFlex || (id ? { id } : null); };
   async function readQR(src) {
     qrFlex = null;
     try {
@@ -2820,6 +2827,28 @@ const CUENTA = {
         $("mlMsg").append("Link copiado. Sirve para un solo vendedor. ", a);
       } catch (e) { $("mlMsg").textContent = "No se pudo crear el link: " + (e.message || e); }
       finally { $("mlLinkBtn").disabled = false; }
+    });
+    // prueba: el chofer conecta su propia cuenta (mismo permiso que un vendedor) y ve qué responde Mercado Libre con un QR
+    $("mlMineBtn").addEventListener("click", async () => {
+      $("mlMineBtn").disabled = true; $("mlTestMsg").textContent = "Abriendo Mercado Libre…";
+      try { const d = await ml({ accion: "link" }); location.href = d.url; }
+      catch (e) { $("mlTestMsg").textContent = "No se pudo abrir: " + (e.message || e); $("mlMineBtn").disabled = false; }
+    });
+    $("mlTestBtn").addEventListener("click", () => { $("mlTestFile").value = ""; $("mlTestFile").click(); });
+    $("mlTestFile").addEventListener("change", async () => {
+      const f = $("mlTestFile").files[0]; if (!f) return;
+      const out = $("mlTestMsg"); out.textContent = "Leyendo el QR…";
+      try {
+        const q = window.leerQRFlex ? await window.leerQRFlex(f) : null;
+        if (!q) { out.textContent = "No encontré un QR en la foto. Probá más cerca y con buena luz."; return; }
+        if (!q.sender_id) { out.textContent = "El QR no es de Mercado Libre Flex (dice: " + q.id + ")."; return; }
+        out.textContent = "Envío " + q.id + " · vendedor " + q.sender_id + "\nConsultando a Mercado Libre…";
+        const d = await ml({ accion: "envio", id: q.id, sender_id: q.sender_id, prueba: true });
+        const lineas = ((d && d.intentos) || []).map(i => "• " + i.cuenta + ": " + i.estado + (i.mensaje ? " (" + i.mensaje + ")" : ""));
+        if (d && d.encontrado) out.textContent = "✅ ¡Funciona! Mercado Libre devolvió la dirección:\n" + d.address + (d.cp ? " (CP " + d.cp + ")" : "") + (d.receptor ? "\nRecibe: " + d.receptor : "") + "\n\n" + lineas.join("\n");
+        else if (!d || !d.vinculado) out.textContent = "Todavía no hay ninguna cuenta conectada. Tocá «Conectar mi cuenta de Mercado Libre» primero.";
+        else out.textContent = "❌ Mercado Libre no dio la dirección con las cuentas conectadas:\n" + lineas.join("\n") + "\n\n403 = sin permiso para ese envío · 404 = no lo encuentra.";
+      } catch (e) { out.textContent = "Error: " + (e.message || e); }
     });
     const err = (e) => {
       const m = String(e && e.message || e);
