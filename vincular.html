@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0f1626">
+<title>Vincular Mercado Libre</title>
+<link rel="icon" href="img/favicon-32.png" sizes="32x32">
+<style>
+:root { --bg: #f2f3ff; --surface: #fff; --ink: #131b2e; --muted: #3d4a42; --accent: #006948; --bad: #ba1a1a; }
+@media (prefers-color-scheme: dark) { :root { --bg: #0f1626; --surface: #1b2335; --ink: #eef0ff; --muted: #aab4c8; --accent: #68dba9; --bad: #ffb4ab; } }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, sans-serif; }
+.card { width: 100%; max-width: 420px; background: var(--surface); border-radius: 18px; padding: 28px 22px; text-align: center; box-shadow: 0 6px 24px rgba(0,0,0,.18); }
+img { width: 72px; height: 72px; border-radius: 50%; }
+h1 { font-size: 1.3rem; margin: 14px 0 8px; }
+p { margin: 0; color: var(--muted); }
+.ok h1 { color: var(--accent); } .err h1 { color: var(--bad); }
+</style>
+</head>
+<body>
+<!-- Acá vuelve el vendedor después de tocar «Permitir» en Mercado Libre. Su cuenta queda vinculada al repartidor que le mandó el link. -->
+<div class="card" id="box">
+  <img src="img/icon-192.png" alt="">
+  <h1 id="t">Vinculando tu cuenta…</h1>
+  <p id="m">Un segundo.</p>
+</div>
+<script>
+(async () => {
+  const FN = "https://iinrakaxkbuqgdghpina.supabase.co/functions/v1/mercadolibre";
+  const KEY = "sb_publishable_awBVwLiczqU3l7MG5kq1FA_o_kwVRYS";
+  const q = new URLSearchParams(location.search), show = (cls, t, m) => { box.className = "card " + cls; document.getElementById("t").textContent = t; document.getElementById("m").textContent = m; };
+  const box = document.getElementById("box");
+  if (q.get("error")) return show("err", "No se vinculó", "No se aceptó el permiso en Mercado Libre. Si fue sin querer, volvé a abrir el link que te mandó el repartidor.");
+  if (!q.get("code") || !q.get("state")) return show("err", "Link incompleto", "Abrí de nuevo el link que te mandó el repartidor.");
+  try {
+    const r = await fetch(FN, { method: "POST", headers: { "Content-Type": "application/json", apikey: KEY }, body: JSON.stringify({ accion: "canjear", code: q.get("code"), state: q.get("state") }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || "el servidor respondió " + r.status);
+    history.replaceState(null, "", location.pathname);
+    show("ok", "¡Listo, cuenta vinculada!", (j.apodo ? j.apodo + ": " : "") + "el repartidor ya puede ver la dirección de tus envíos Flex al escanear la etiqueta. Podés cerrar esta página.");
+  } catch (e) { show("err", "No se pudo vincular", String(e.message || e) + "."); }
+})();
+</script>
+</body>
+</html>
