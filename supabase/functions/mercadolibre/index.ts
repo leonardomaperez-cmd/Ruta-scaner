@@ -14,7 +14,7 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const CLIENT_ID = Deno.env.get("ML_CLIENT_ID") || "1243284537530435";
 const CLIENT_SECRET = Deno.env.get("ML_CLIENT_SECRET") || "";
-const REDIRECT = "https://leonardomaperez-cmd.github.io/Ruta-scaner/";
+const REDIRECT = Deno.env.get("ML_REDIRECT") || "https://leonardomaperez-cmd.github.io/Ruta-scaner/"; // si la app cambia de dirección, cargar el Secret ML_REDIRECT
 const AUTH_URL = "https://auth.mercadolibre.com.ar/authorization";
 const API = "https://api.mercadolibre.com";
 
@@ -146,20 +146,55 @@ Deno.serve(async (req) => {
     // primero la cuenta del vendedor del QR; después cualquier otra cuenta vinculada por este chofer
     // (por ejemplo su propia cuenta de chofer Flex, por si Mercado Libre le muestra los envíos que tiene asignados)
     const { data: todas } = await admin.from("ml_vinculos").select("ml_user_id, ml_vendedores(*)").eq("chofer", quien);
-    const vs = (todas || []).slice().sort((a: any, b: any) => (String(b.ml_user_id) === sender ? 1 : 0) - (String(a.ml_user_id) === sender ? 1 : 0));
-    const prueba = !!b?.prueba, intentos: unknown[] = [];
+    // Para no generar errores 4xx de más (Mercado Libre puede bloquear apps con muchos 400/403):
+    // en el uso normal solo se pregunta con la cuenta del vendedor del QR; las demás cuentas vinculadas
+    // (por ejemplo una cuenta de mensajería) solo se prueban en modo prueba o si el chofer marcó "mensajería".
+    const delVendedor = (todas || []).filter((v: any) => String(v.ml_user_id) === sender);
+    const vs = delVendedor.length && !b?.prueba && !b?.courier ? delVendedor
+      : (todas || []).slice().sort((a: any, b: any) => (String(b.ml_user_id) === sender ? 1 : 0) - (String(a.ml_user_id) === sender ? 1 : 0));
+    if (!vs.length || (!delVendedor.length && !b?.prueba && !b?.courier)) return answer(200, { encontrado: false, vinculado: (todas || []).length > 0 });
+    let courierError = false;
+    const prueba = !!b?.prueba, courier = !!b?.courier, intentos: unknown[] = [];
     for (const v of vs) {
       const vend = (v as any).ml_vendedores; if (!vend) continue;
       const tk = await tokenDe(vend);
       if (!tk) { intentos.push({ cuenta: vend.apodo || v.ml_user_id, estado: "sin token (volver a vincular)" }); continue; }
-      const r = await fetch(`${API}/shipments/${id}`, { headers: { Authorization: "Bearer " + tk, "x-format-new": "true" } });
-      const j = await r.json().catch(() => ({}));
+      if (prueba) {
+        // paso de prueba: ¿esta cuenta tiene Flex? (GET /flex/sites/MLA/users/{USER_ID}/subscriptions/v1)
+        const rs = await fetch(`${API}/flex/sites/MLA/users/${v.ml_user_id}/subscriptions/v1`, { headers: { Authorization: "Bearer " + tk } });
+        const js = await rs.json().catch(() => ({}));
+        const tieneFlex = JSON.stringify(js).toUpperCase().includes('"FLEX"');
+        intentos.push({ cuenta: (vend.apodo || v.ml_user_id) + " (¿tiene Flex?)", estado: rs.status, mensaje: rs.ok ? (tieneFlex ? "sí, tiene suscripción FLEX" : "respondió pero sin FLEX: " + JSON.stringify(js).slice(0, 150)) : (js.message || js.error || "") });
+        // paso de prueba: ¿a qué chofer está asignado este envío? (GET /flex/sites/MLA/shipments/{id}/assignment/v2)
+        const ra = await fetch(`${API}/flex/sites/MLA/shipments/${id}/assignment/v2`, { headers: { Authorization: "Bearer " + tk } });
+        const ja = await ra.json().catch(() => ({}));
+        intentos.push({ cuenta: (vend.apodo || v.ml_user_id) + " (¿asignado a quién?)", estado: ra.status, mensaje: ra.ok ? JSON.stringify(ja).slice(0, 200) : (ra.status === 404 ? "sin chofer asignado o sin ruta abierta: " : ra.status === 403 ? "tu cuenta no tiene acceso: " : "") + (ja.message || ja.error || "") });
+      }
+      let r = await fetch(`${API}/shipments/${id}`, { headers: { Authorization: "Bearer " + tk, "x-format-new": "true" } });
+      let j = await r.json().catch(() => ({}));
+      // cuenta de MENSAJERÍA (courier Flex): si todavía no ve el envío, primero lo registra a su nombre
+      // (POST /flex/sites/MLA/users/{COURIER_USER_ID}/courier-shipment/v1) y después vuelve a pedir la dirección.
+      // Solo cuando el chofer marcó en Ajustes que su cuenta conectada es de mensajería.
+      if (!r.ok && courier) {
+        const rc = await fetch(`${API}/flex/sites/MLA/users/${v.ml_user_id}/courier-shipment/v1`, {
+          method: "POST",
+          headers: { Authorization: "Bearer " + tk, "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ shipment_id: Number(id) }),
+        });
+        const jc = await rc.json().catch(() => ({}));
+        intentos.push({ cuenta: (vend.apodo || v.ml_user_id) + " (registrar como mensajería)", estado: rc.status, mensaje: rc.ok ? "registrado (aceptado)" : (rc.status === 409 ? "el envío ya está asignado a una mensajería" : rc.status === 403 ? "sin permiso (falta vinculación/autorización como mensajería): " : "") + (rc.ok ? "" : (jc.message || jc.error || JSON.stringify(jc).slice(0, 200))) });
+        if (!rc.ok && rc.status >= 400 && rc.status < 500 && rc.status !== 429 && rc.status !== 409) courierError = true;
+        if (rc.ok || rc.status === 409) {
+          r = await fetch(`${API}/shipments/${id}`, { headers: { Authorization: "Bearer " + tk, "x-format-new": "true" } });
+          j = await r.json().catch(() => ({}));
+        }
+      }
       if (!r.ok) { intentos.push({ cuenta: vend.apodo || v.ml_user_id, estado: r.status, mensaje: j.message || j.error || "" }); continue; }
       const d = direccion(j);
-      intentos.push({ cuenta: vend.apodo || v.ml_user_id, estado: r.status, mensaje: d.address ? "trae dirección" : "sin dirección en la respuesta" });
+      intentos.push({ cuenta: vend.apodo || v.ml_user_id, estado: r.status, mensaje: (d.address ? "trae dirección" : "sin dirección en la respuesta") + (j.status ? ` (estado: ${j.status}${j.substatus ? " / " + j.substatus : ""})` : "") });
       if (d.address) return answer(200, { encontrado: true, vendedor: vend.apodo || "", ...d, ...(prueba ? { intentos } : {}) });
     }
-    return answer(200, { encontrado: false, vinculado: vs.length > 0, ...(prueba ? { intentos } : {}) });
+    return answer(200, { encontrado: false, vinculado: vs.length > 0, ...(courierError ? { courier_error: true } : {}), ...(prueba ? { intentos } : {}) });
   }
 
   return answer(400, { error: "acción desconocida" });

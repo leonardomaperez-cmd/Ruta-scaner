@@ -552,8 +552,9 @@ input:disabled { opacity: .45; }
       <strong>Mercado Libre Flex</strong>
       <span class="note">Mandale este link a cada vendedor. Cuando lo abra y toque «Permitir», al escanear el QR de sus envíos Flex la dirección sale directo de Mercado Libre.</span>
       <button class="btn" id="mlLinkBtn" type="button">🔗 Link para un vendedor</button>
-      <span class="note">Prueba: conectá tu propia cuenta de chofer Flex y escaneá el QR de un paquete que tengas asignado, para ver si Mercado Libre te da la dirección.</span>
+      <span class="note">Si tenés una cuenta de negocio de mensajería (courier Flex), conectala acá. Tiene que ser la cuenta principal (administrador) y estar verificada en Mercado Libre.</span>
       <button class="btn" id="mlMineBtn" type="button">👤 Conectar mi cuenta de Mercado Libre</button>
+      <label class="check"><input id="mlCourierChk" type="checkbox"> Mi cuenta conectada es de mensajería: registrar cada envío escaneado a mi nombre antes de pedir la dirección</label>
       <button class="btn" id="mlTestBtn" type="button">🧪 Probar con este QR</button>
       <input type="file" id="mlTestFile" accept="image/*" capture="environment" hidden>
       <span class="note" id="mlTestMsg" style="white-space:pre-line"></span>
@@ -563,7 +564,7 @@ input:disabled { opacity: .45; }
     <p class="note" id="nativeInfo" hidden></p>
     <button class="btn" id="permsBtn" type="button" hidden>Revisar permisos de la app</button>
     <p class="note">Las paradas se guardan en este teléfono. Exporta el CSV si quieres guardarlas aparte.</p>
-    <p class="note"><a href="https://leonardomaperez-cmd.github.io/Ruta-scaner/legal.html" target="_blank" rel="noopener">Privacidad y términos</a></p>
+    <p class="note"><a href="../legal.html" target="_blank" rel="noopener">Privacidad y términos</a></p>
    </div>
   </section>
 
@@ -1304,9 +1305,10 @@ input:disabled { opacity: .45; }
   // QR de Mercado Libre Flex: {"id":"…","sender_id":…,"hash_code":"…"}; lo guarda para pedir la dirección a Mercado Libre
   let qrFlex = null;
   // para el botón de prueba de Ajustes: lee el QR de una foto y devuelve {id, sender_id} (o {id} si no es Flex)
-  window.leerQRFlex = async (file) => { const id = await readQR(file); return qrFlex || (id ? { id } : null); };
+  let qrOtro = ""; // texto de un QR que no es Flex (solo para el mensaje del botón de prueba)
+  window.leerQRFlex = async (file) => { await readQR(file); return qrFlex || (qrOtro ? { id: qrOtro } : null); };
   async function readQR(src) {
-    qrFlex = null;
+    qrFlex = null; qrOtro = "";
     try {
       const bmp = src instanceof HTMLCanvasElement ? src : await createImageBitmap(src);
       let raw = "";
@@ -1322,8 +1324,10 @@ input:disabled { opacity: .45; }
         if (r) raw = r.data;
       }
       raw = String(raw || "").trim(); if (!raw) return "";
-      try { const o = JSON.parse(raw); if (o && o.id != null) { if (o.sender_id != null) qrFlex = { id: String(o.id), sender_id: String(o.sender_id) }; return String(o.id); } } catch {}
-      return raw;
+      // solo se usan los QR de Mercado Libre Flex; cualquier otro QR se ignora y la dirección se lee de la etiqueta
+      try { const o = JSON.parse(raw); if (o && o.id != null && o.sender_id != null) { qrFlex = { id: String(o.id), sender_id: String(o.sender_id) }; return String(o.id); } } catch {}
+      qrOtro = raw.slice(0, 80);
+      return "";
     } catch { return ""; }
   }
   function showVerify(it) {
@@ -2746,8 +2750,8 @@ input:disabled { opacity: .45; }
 // Mientras supabaseUrl esté vacío, la app funciona como siempre, sin pedir cuenta.
 // Las cuentas se activan a mano en Supabase (tabla «perfiles», columna «activo») cuando se acredita el pago.
 const CUENTA = {
-  supabaseUrl: "https://iinrakaxkbuqgdghpina.supabase.co",      // ej.: https://xxxx.supabase.co
-  supabaseAnonKey: "sb_publishable_awBVwLiczqU3l7MG5kq1FA_o_kwVRYS",  // clave pública «anon» del proyecto (se puede publicar; la seguridad la dan las reglas RLS)
+  supabaseUrl: "https://rwutecnycvpmfciwxfwo.supabase.co",      // ej.: https://xxxx.supabase.co
+  supabaseAnonKey: "sb_publishable_DOQTW3KJrTvOOBJ8HKe06A_Y1JAVtop",  // clave pública «anon» del proyecto (se puede publicar; la seguridad la dan las reglas RLS)
   payUrl: "https://mpago.la/18ZXJKD",           // link de pago de Mercado Pago
 };
 (() => {
@@ -2800,6 +2804,10 @@ const CUENTA = {
     };
     // Mercado Libre: vendedores vinculados y dirección de sus envíos Flex (función «mercadolibre»)
     let mlOff = false;
+    // cuenta de mensajería (courier Flex): se guarda en este teléfono
+    const mlCourier = () => localStorage.getItem("mlCourier") === "1";
+    $("mlCourierChk").checked = mlCourier();
+    $("mlCourierChk").addEventListener("change", () => localStorage.setItem("mlCourier", $("mlCourierChk").checked ? "1" : "0"));
     const ml = async (body) => {
       const { data, error } = await sb.functions.invoke("mercadolibre", { body });
       if (error) { let st = 0, msg = ""; try { st = error.context.status; msg = (await error.context.json()).error || ""; } catch {} if (st === 404) mlOff = true; throw new Error(msg || "Mercado Libre no respondió"); }
@@ -2807,7 +2815,12 @@ const CUENTA = {
     };
     window.envioML = async (id, sender_id) => {
       if (mlOff) return null;
-      const d = await ml({ accion: "envio", id, sender_id });
+      const d = await ml({ accion: "envio", id, sender_id, courier: mlCourier() });
+      // si Mercado Libre rechaza el registro como mensajería, se apaga la opción para no seguir generando errores
+      if (d && d.courier_error && mlCourier()) {
+        localStorage.setItem("mlCourier", "0"); $("mlCourierChk").checked = false;
+        try { toast("Mercado Libre no aceptó registrar el envío como mensajería. Apagué esa opción en Ajustes; probala con 🧪 para ver el motivo.", true); } catch {}
+      }
       return d && d.encontrado ? d : null;
     };
     async function mlListar() {
@@ -2843,7 +2856,7 @@ const CUENTA = {
         if (!q) { out.textContent = "No encontré un QR en la foto. Probá más cerca y con buena luz."; return; }
         if (!q.sender_id) { out.textContent = "El QR no es de Mercado Libre Flex (dice: " + q.id + ")."; return; }
         out.textContent = "Envío " + q.id + " · vendedor " + q.sender_id + "\nConsultando a Mercado Libre…";
-        const d = await ml({ accion: "envio", id: q.id, sender_id: q.sender_id, prueba: true });
+        const d = await ml({ accion: "envio", id: q.id, sender_id: q.sender_id, prueba: true, courier: mlCourier() });
         const lineas = ((d && d.intentos) || []).map(i => "• " + i.cuenta + ": " + i.estado + (i.mensaje ? " (" + i.mensaje + ")" : ""));
         if (d && d.encontrado) out.textContent = "✅ ¡Funciona! Mercado Libre devolvió la dirección:\n" + d.address + (d.cp ? " (CP " + d.cp + ")" : "") + (d.receptor ? "\nRecibe: " + d.receptor : "") + "\n\n" + lineas.join("\n");
         else if (!d || !d.vinculado) out.textContent = "Todavía no hay ninguna cuenta conectada. Tocá «Conectar mi cuenta de Mercado Libre» primero.";
