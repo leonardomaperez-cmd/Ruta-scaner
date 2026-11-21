@@ -561,6 +561,7 @@ input:disabled { opacity: .45; }
       <button class="btn" id="mlMineBtn" type="button">👤 Conectar mi cuenta de Mercado Libre</button>
       <label class="check"><input id="mlCourierChk" type="checkbox"> Mi cuenta conectada es de mensajería: registrar cada envío escaneado a mi nombre antes de pedir la dirección</label>
       <button class="btn" id="mlTestBtn" type="button">🧪 Probar con este QR</button>
+      <button class="btn" id="mlTestNumBtn" type="button">⌨️ Probar con el número de envío</button>
       <input type="file" id="mlTestFile" accept="image/*" capture="environment" hidden>
       <span class="note" id="mlTestMsg" style="white-space:pre-line"></span>
       <span class="note" id="mlMsg"></span>
@@ -2937,14 +2938,26 @@ const CUENTA = {
         const q = window.leerQRFlex ? await window.leerQRFlex(f) : null;
         if (!q) { out.textContent = "No encontré un QR en la foto. Probá más cerca y con buena luz."; return; }
         if (!q.sender_id) { out.textContent = "El QR no es de Mercado Libre Flex (dice: " + q.id + ")."; return; }
-        out.textContent = "Envío " + q.id + " · vendedor " + q.sender_id + "\nConsultando a Mercado Libre…";
-        const d = await ml({ accion: "envio", id: q.id, sender_id: q.sender_id, prueba: true, courier: mlCourier() });
+        await mlProbar(q.id, q.sender_id);
+      } catch (e) { out.textContent = "Error: " + (e.message || e); }
+    });
+    // prueba sin etiqueta: el número de envío que muestra la app de Envíos Flex (#4…)
+    $("mlTestNumBtn").addEventListener("click", async () => {
+      const v = prompt("Número de envío (el #… que muestra la app de Envíos Flex):", "");
+      const id = String(v || "").replace(/\D/g, ""); if (!id) return;
+      try { await mlProbar(id, ""); } catch (e) { $("mlTestMsg").textContent = "Error: " + (e.message || e); }
+    });
+    async function mlProbar(id, sender) {
+      const out = $("mlTestMsg");
+      {
+        out.textContent = "Envío " + id + (sender ? " · vendedor " + sender : "") + "\nConsultando a Mercado Libre…";
+        const d = await ml({ accion: "envio", id, sender_id: sender, prueba: true, courier: mlCourier() });
         const lineas = ((d && d.intentos) || []).map(i => "• " + i.cuenta + ": " + i.estado + (i.mensaje ? " (" + i.mensaje + ")" : ""));
         if (d && d.encontrado) out.textContent = "✅ ¡Funciona! Mercado Libre devolvió la dirección:\n" + d.address + (d.cp ? " (CP " + d.cp + ")" : "") + (d.receptor ? "\nRecibe: " + d.receptor : "") + "\n\n" + lineas.join("\n");
         else if (!d || !d.vinculado) out.textContent = "Todavía no hay ninguna cuenta conectada. Tocá «Conectar mi cuenta de Mercado Libre» primero.";
         else out.textContent = "❌ Mercado Libre no dio la dirección con las cuentas conectadas:\n" + lineas.join("\n") + "\n\n403 = sin permiso para ese envío · 404 = no lo encuentra.";
-      } catch (e) { out.textContent = "Error: " + (e.message || e); }
-    });
+      }
+    }
     const err = (e) => {
       const m = String(e && e.message || e);
       if (/invalid login/i.test(m)) return "Correo o contraseña incorrectos.";
