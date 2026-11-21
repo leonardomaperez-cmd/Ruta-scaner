@@ -136,7 +136,11 @@ Deno.serve(async (req) => {
   }
 
   if (accion === "desvincular") {
-    await admin.from("ml_vinculos").delete().eq("chofer", quien).eq("ml_user_id", Number(b?.ml_user_id));
+    const mid = Number(b?.ml_user_id);
+    await admin.from("ml_vinculos").delete().eq("chofer", quien).eq("ml_user_id", mid);
+    // si ningún otro chofer usa esa cuenta, se borran también sus tokens
+    const { count } = await admin.from("ml_vinculos").select("ml_user_id", { count: "exact", head: true }).eq("ml_user_id", mid);
+    if (!count) await admin.from("ml_vendedores").delete().eq("ml_user_id", mid);
     return answer(200, { ok: true });
   }
 
