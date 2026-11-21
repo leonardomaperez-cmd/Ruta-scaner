@@ -164,6 +164,13 @@ Deno.serve(async (req) => {
       const tk = await tokenDe(vend);
       if (!tk) { intentos.push({ cuenta: vend.apodo || v.ml_user_id, estado: "sin token (volver a vincular)" }); continue; }
       if (prueba) {
+        // paso 0: ¿el token anda? (GET /users/me). 200 = token bien; así un 403 después es falta de permiso para ESE envío
+        const rm = await fetch(`${API}/users/me`, { headers: { Authorization: "Bearer " + tk } });
+        const jm = await rm.json().catch(() => ({}));
+        intentos.push({ cuenta: (vend.apodo || v.ml_user_id) + " (¿token válido?)", estado: rm.status, mensaje: rm.ok
+          ? `sí: ${jm.nickname || ""} (id ${jm.id})` + (jm.user_type ? ", tipo " + jm.user_type : "") + (Array.isArray(jm.tags) && jm.tags.length ? ", tags " + jm.tags.join("/") : "") + (jm.id != null && String(jm.id) !== String(v.ml_user_id) ? " ⚠ no coincide con la cuenta vinculada" : "")
+          : "token vencido o inválido, volvé a vincular: " + (jm.message || jm.error || "") });
+        if (!rm.ok) continue;
         // paso de prueba: ¿esta cuenta tiene Flex? (GET /flex/sites/MLA/users/{USER_ID}/subscriptions/v1)
         const rs = await fetch(`${API}/flex/sites/MLA/users/${v.ml_user_id}/subscriptions/v1`, { headers: { Authorization: "Bearer " + tk } });
         const js = await rs.json().catch(() => ({}));
