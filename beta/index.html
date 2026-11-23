@@ -119,6 +119,19 @@ body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--body); ov
 #arrive .row .btn { flex: 1; min-height: 42px; padding: 8px; }
 #finish { position: fixed; left: 12px; right: 12px; top: calc(56px + var(--top)); z-index: 975; background: #1b2335; border-left: 5px solid #85f8c4; color: #fff; border-radius: 16px; padding: 14px; box-shadow: 0 8px 24px rgba(0,0,0,.4); display: grid; gap: 8px; max-width: 520px; margin: 0 auto; }
 #finish[hidden] { display: none; }
+#zonaIn { position: fixed; left: 12px; right: 12px; top: calc(56px + var(--top)); z-index: 1990; background: #1b2335; border-left: 5px solid #85f8c4; color: #fff; border-radius: 16px; padding: 14px; box-shadow: 0 8px 24px rgba(0,0,0,.4); display: grid; gap: 8px; max-width: 520px; margin: 0 auto; }
+#zonaIn[hidden] { display: none; }
+#zonaBar { position: fixed; left: 12px; right: 12px; top: calc(56px + var(--top)); z-index: 970; background: #1b2335; border-left: 5px solid #ffb74d; color: #fff; border-radius: 16px; padding: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.4); display: grid; gap: 8px; max-width: 520px; margin: 0 auto; font: 600 .92rem var(--body); }
+#zonaBar[hidden] { display: none; }
+#zonaBar .row { display: flex; gap: 8px; flex-wrap: nowrap; }
+#zonaBar .row .btn { flex: 1; min-height: 40px; padding: 6px; }
+#zonaIn .big { font: 700 1.4rem/1.1 var(--display); color: #85f8c4; }
+#zonaIn .row { display: flex; gap: 8px; }
+#zonaIn .row .btn { flex: 1; min-height: 42px; padding: 8px; }
+.zrow { display: grid; grid-template-columns: 14px 1fr auto; gap: 8px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
+.zrow i { width: 14px; height: 14px; border-radius: 50%; }
+.zrow .zb { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.zlbl { background: rgba(22,32,43,.85); color: #fff; font: 700 .8rem var(--body); padding: 2px 8px; border-radius: 999px; white-space: nowrap; border: 0; box-shadow: none; }
 #finish .big { font: 700 1.6rem/1.1 var(--display); letter-spacing: -.01em; color: #85f8c4; }
 #finish .row { display: flex; gap: 8px; }
 #finish .row .btn { flex: 1; min-height: 42px; padding: 8px; }
@@ -368,6 +381,15 @@ input:disabled { opacity: .45; }
   <div id="finishInfo"></div>
   <div class="row"><button class="btn btn-primary" id="finishNew" type="button">Armar nueva ruta</button><button class="btn" id="finishLater" type="button">Todavía no</button></div>
 </div>
+<div id="zonaBar" hidden>
+  <div id="zonaBarTxt">Tocá el mapa para marcar los bordes de la zona (mínimo 3 puntos)</div>
+  <div class="row"><button class="btn" id="zonaBarUndo" type="button">↩ Deshacer</button><button class="btn" id="zonaBarNo" type="button">Cancelar</button><button class="btn btn-primary" id="zonaBarOk" type="button">Listo</button></div>
+</div>
+<div id="zonaIn" role="alert" hidden>
+  <div class="big">Te pasaron una zona</div>
+  <div id="zonaInInfo"></div>
+  <div class="row"><button class="btn btn-primary" id="zonaInAdd" type="button">Agregar a mi ruta</button><button class="btn" id="zonaInNo" type="button">Ahora no</button></div>
+</div>
 <div class="scanner" id="scanner" hidden>
   <video id="cam" playsinline muted autoplay></video>
   <img id="frozen" class="frozen" alt="" hidden>
@@ -441,6 +463,15 @@ input:disabled { opacity: .45; }
       <input id="pdfPrice" type="text" inputmode="decimal" placeholder="Ej.: 1500" autocomplete="off">
       <span class="note">El PDF muestra el precio de cada parada, la suma de los paquetes entregados y los km de la ruta.</span>
       <div class="row"><button id="pdfCancel" class="btn" type="button">Cancelar</button><button id="pdfGo" class="btn btn-primary" type="button">Descargar PDF</button></div>
+    </div>
+    <button id="zonaBtn" class="btn" type="button" style="width:100%;margin-top:8px">✂️ Dividir en zonas / pasar a otro chofer</button>
+    <div class="card" id="zonaBox" hidden style="margin-top:8px">
+      <label class="label" for="zonaMax">Paquetes por zona (máximo)</label>
+      <input id="zonaMax" type="text" inputmode="numeric" autocomplete="off" placeholder="15">
+      <span class="note">Una parada con +2 cuenta 3 paquetes. Las zonas siguen el orden de la ruta optimizada, así cada una queda junta en el mapa. Una dirección nunca se parte entre dos zonas.</span>
+      <div class="row"><button id="zonaCancel" class="btn" type="button">Cerrar</button><button id="zonaGo" class="btn btn-primary" type="button">Dividir</button></div>
+      <button id="zonaDraw" class="btn" type="button">✏️ Marcar una zona a mano en el mapa</button>
+      <div id="zonaList"></div>
     </div>
     <button id="clearDone" class="btn" type="button" style="width:100%;margin-top:8px">Quitar entregadas</button>
     <button id="newRoute" class="btn" type="button" style="width:100%;margin-top:8px">🔄 Armar nueva ruta</button>
@@ -2792,6 +2823,172 @@ input:disabled { opacity: .45; }
     } catch { toast("No se pudo armar el PDF. Revisá tu internet.", true); }
     finally { $("pdfGo").disabled = false; $("pdfGo").textContent = "Descargar PDF"; }
   });
+
+  // ---------- zonas: dividir la ruta en grupos de hasta N paquetes y pasarle uno a otro chofer ----------
+  // El link lleva las paradas adentro (después del #, no pasa por ningún servidor): el otro chofer lo abre y se le agregan.
+  const ZCOL = ["#e53935", "#1e88e5", "#fb8c00", "#8e24aa", "#00897b", "#c0ca33", "#6d4c41", "#d81b60", "#3949ab", "#43a047"];
+  const pq = (it) => 1 + (Number(it.extra) || 0);
+  let zonas = null; // [[num, ...], ...]
+  const zoneLayer = L.layerGroup().addTo(map);
+  function hull(pts) {
+    const p = pts.map(x => [x[1], x[0]]).sort((a, b) => a[0] - b[0] || a[1] - b[1]); if (p.length < 3) return pts;
+    const cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), lo = [], up = [];
+    for (const q of p) { while (lo.length >= 2 && cr(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); }
+    for (const q of p.slice().reverse()) { while (up.length >= 2 && cr(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop(); up.push(q); }
+    return lo.slice(0, -1).concat(up.slice(0, -1)).map(x => [x[1], x[0]]);
+  }
+  function drawZonas(fit) {
+    zoneLayer.clearLayers(); if (!zonas) return; const all = [];
+    zonas.forEach((z, i) => {
+      const its = z.map(byNum).filter(it => it && typeof it.lat === "number"); if (!its.length) return;
+      const col = ZCOL[i % ZCOL.length], pts = its.map(it => [it.lat, it.lng]); all.push(...pts);
+      const h = hull(pts);
+      if (h.length >= 3) L.polygon(h, { color: col, weight: 3, fillOpacity: .15, interactive: false }).addTo(zoneLayer);
+      its.forEach(it => L.circleMarker([it.lat, it.lng], { radius: 15, color: col, weight: 4, fill: false, interactive: false }).addTo(zoneLayer));
+      const c = [pts.reduce((a, p) => a + p[0], 0) / pts.length, pts.reduce((a, p) => a + p[1], 0) / pts.length];
+      L.tooltip({ permanent: true, direction: "center", className: "zlbl" }).setLatLng(c).setContent("Zona " + (i + 1)).addTo(zoneLayer);
+    });
+    if (fit && all.length) map.fitBounds(all, { padding: [30, 30], maxZoom: 16 });
+  }
+  // reparte en partes parejas: con 32 paquetes y máximo 15 salen 3 zonas de ~11 (nunca más del máximo)
+  function dividir(list, max) {
+    const total = list.reduce((n, it) => n + pq(it), 0), k = Math.ceil(total / max), out = [];
+    let cur = [], n = 0, left = total, zl = k;
+    list.forEach(it => {
+      const target = Math.min(max, Math.ceil(left / zl));
+      if (cur.length && (n + pq(it) > max || n >= target)) { out.push(cur); left -= n; zl = Math.max(1, zl - 1); cur = []; n = 0; }
+      cur.push(it.num); n += pq(it);
+    });
+    if (cur.length) out.push(cur);
+    return out;
+  }
+  async function hacerZonas() {
+    const max = Math.max(1, parseInt($("zonaMax").value, 10) || 15); store.set("zonaMax", max); $("zonaMax").value = max;
+    const pend = items.filter(it => !it.done && !it.review && it.address);
+    const sinMapa = pend.filter(it => typeof it.lat !== "number");
+    if (!pend.length) { toast("No hay paradas pendientes", true); return; }
+    let list;
+    if (route && route.order.length) list = route.order.map(byNum).filter(it => it && !it.done && typeof it.lat === "number");
+    else {
+      const loc = pend.filter(it => typeof it.lat === "number");
+      if (!loc.length) { toast("Primero tocá «Optimizar ruta» para ubicar las direcciones", true); return; }
+      const st = (await whereAmI(5000)) || loc[0];
+      list = (await routeLocal(st, loc, false)).order.map(byNum);
+    }
+    const resto = pend.filter(it => !list.includes(it)); // sin ubicar o fuera de la ruta: van al final
+    zonas = dividir(list.concat(resto.filter(it => typeof it.lat === "number")), max);
+    if (sinMapa.length) toast(sinMapa.length + " parada(s) sin ubicar en el mapa no entraron en ninguna zona", true);
+    renderZonas(); drawZonas(true);
+  }
+  function renderZonas() {
+    const box = $("zonaList"); box.textContent = ""; if (!zonas) return;
+    zonas.forEach((z, i) => {
+      const its = z.map(byNum).filter(Boolean); if (!its.length) return;
+      const row = document.createElement("div"); row.className = "zrow";
+      const dot = document.createElement("i"); dot.style.background = ZCOL[i % ZCOL.length];
+      const t = document.createElement("div");
+      t.innerHTML = "<b>Zona " + (i + 1) + "</b><div class='note'>" + its.length + " parada" + (its.length > 1 ? "s" : "") + " · " + its.reduce((n, it) => n + pq(it), 0) + " paquetes · " + its.map(it => code(it.num)).slice(0, 6).join(", ") + (its.length > 6 ? "…" : "") + "</div>";
+      const b = document.createElement("div"); b.className = "zb";
+      const ver = document.createElement("button"); ver.className = "mini"; ver.type = "button"; ver.textContent = "🗺️ Ver";
+      ver.onclick = () => { closeSheets(); map.fitBounds(its.filter(it => typeof it.lat === "number").map(it => [it.lat, it.lng]), { padding: [40, 40], maxZoom: 16 }); };
+      const pas = document.createElement("button"); pas.className = "mini"; pas.type = "button"; pas.textContent = "📤 Pasar";
+      pas.onclick = async () => { await pasarZona(its, i + 1); quitar.hidden = false; };
+      const quitar = document.createElement("button"); quitar.className = "mini"; quitar.type = "button"; quitar.textContent = "🗑️ Ya la pasé, quitarla"; quitar.hidden = true;
+      let qt = 0;
+      quitar.onclick = () => {
+        if (Date.now() - qt > 4000) { qt = Date.now(); quitar.textContent = "Tocá de nuevo para quitar " + its.length; return; }
+        const nums = new Set(its.map(it => it.num));
+        items.forEach(it => { if (nums.has(it.num)) { if (it.photo) fotos.del(it.num); if (it.cfoto) fotos.del("c" + it.num); } });
+        items = items.filter(it => !nums.has(it.num));
+        if (route) { route.order = route.order.filter(n => !nums.has(n)); if (!route.order.length) route = null; }
+        zonas = zonas.filter((_, k) => k !== i); if (!zonas.length) zonas = null;
+        save(); refresh(false); renderZonas(); drawZonas(false);
+        toast("Zona quitada. Tocá «Optimizar ruta» para reordenar lo que te queda");
+      };
+      b.append(ver, pas, quitar); row.append(dot, t, b); box.append(row);
+    });
+  }
+  const b64u = (u8) => { let s = ""; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
+  const unb64u = (s) => { const b = atob(s.replace(/-/g, "+").replace(/_/g, "/")); const u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; };
+  const pipe = async (u8, Stream) => new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(new Stream("deflate-raw"))).arrayBuffer());
+  async function zonaCodigo(its) {
+    const data = { v: 1, s: its.map(it => { const o = { a: it.address }; if (typeof it.lat === "number") { o.y = +it.lat.toFixed(6); o.x = +it.lng.toFixed(6); }
+      if (pq(it) > 1) o.e = pq(it) - 1; if (it.ref) o.r = it.ref; if (it.tel) o.t = it.tel; return o; }) };
+    const raw = new TextEncoder().encode(JSON.stringify(data));
+    if ("CompressionStream" in window) { try { return "1" + b64u(await pipe(raw, CompressionStream)); } catch {} }
+    return "0" + b64u(raw);
+  }
+  async function zonaLeer(c) {
+    let u8 = unb64u(c.slice(1));
+    if (c[0] === "1") u8 = await pipe(u8, DecompressionStream);
+    const d = JSON.parse(new TextDecoder().decode(u8));
+    return (d && Array.isArray(d.s) ? d.s : []).filter(o => o && typeof o.a === "string" && o.a.trim()).slice(0, 300);
+  }
+  async function pasarZona(its, n) {
+    const url = location.origin + location.pathname + "#zona=" + await zonaCodigo(its);
+    const pk = its.reduce((k, it) => k + pq(it), 0);
+    const text = "Te paso la zona " + n + ": " + its.length + " paradas, " + pk + " paquetes. Abrí este link con Ruta Escáner y se te cargan solas:";
+    if (navigator.share) { try { await navigator.share({ title: "Zona " + n, text, url }); return; } catch (e) { if (e && e.name === "AbortError") return; } }
+    window.open("https://wa.me/?text=" + encodeURIComponent(text + "\n" + url), "_blank", "noopener");
+  }
+  $("zonaBtn").addEventListener("click", () => { $("zonaMax").value = store.get("zonaMax", 15); $("zonaBox").hidden = false; if (zonas) { renderZonas(); drawZonas(false); } });
+  $("zonaCancel").addEventListener("click", () => { $("zonaBox").hidden = true; zonas = null; renderZonas(); drawZonas(false); });
+  $("zonaGo").addEventListener("click", async () => { $("zonaGo").disabled = true; try { await hacerZonas(); } catch (e) { toast("No se pudo dividir: " + (e.message || e), true); } finally { $("zonaGo").disabled = false; } });
+  // zona a mano: el chofer toca puntos en el mapa y las paradas pendientes que quedan adentro forman una zona
+  let dibujo = null; const drawLayer = L.layerGroup().addTo(map);
+  const adentro = (pt, poly) => { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [yi, xi] = poly[i], [yj, xj] = poly[j];
+    if ((yi > pt[0]) !== (yj > pt[0]) && pt[1] < (xj - xi) * (pt[0] - yi) / (yj - yi) + xi) c = !c; } return c; };
+  const dentroDe = (poly) => poly.length < 3 ? [] : orderedItems().filter(it => !it.done && !it.review && typeof it.lat === "number" && adentro([it.lat, it.lng], poly));
+  function pintarDibujo() {
+    drawLayer.clearLayers(); if (!dibujo) return;
+    if (dibujo.length >= 3) L.polygon(dibujo, { color: "#ffb74d", weight: 3, dashArray: "6 6", fillOpacity: .18, interactive: false }).addTo(drawLayer);
+    else if (dibujo.length === 2) L.polyline(dibujo, { color: "#ffb74d", weight: 3, dashArray: "6 6", interactive: false }).addTo(drawLayer);
+    dibujo.forEach(p => L.circleMarker(p, { radius: 6, color: "#fff", weight: 2, fillColor: "#ffb74d", fillOpacity: 1, interactive: false }).addTo(drawLayer));
+    const its = dentroDe(dibujo);
+    $("zonaBarTxt").textContent = dibujo.length < 3 ? "Tocá el mapa para marcar los bordes de la zona (" + dibujo.length + " de mínimo 3 puntos)"
+      : "Adentro: " + its.length + " parada" + (its.length === 1 ? "" : "s") + " · " + its.reduce((n, it) => n + pq(it), 0) + " paquetes. Seguí marcando o tocá Listo.";
+  }
+  const finDibujo = () => { dibujo = null; pintarDibujo(); $("zonaBar").hidden = true; map.getContainer().style.cursor = ""; };
+  map.on("click", (e) => { if (!dibujo) return; dibujo.push([e.latlng.lat, e.latlng.lng]); pintarDibujo(); });
+  $("zonaDraw").addEventListener("click", () => { closeSheets(); dibujo = []; pintarDibujo(); $("zonaBar").hidden = false; map.getContainer().style.cursor = "crosshair"; });
+  $("zonaBarUndo").addEventListener("click", () => { if (dibujo && dibujo.length) { dibujo.pop(); pintarDibujo(); } });
+  $("zonaBarNo").addEventListener("click", () => { finDibujo(); showTab("p-stops"); });
+  $("zonaBarOk").addEventListener("click", () => {
+    const its = dibujo ? dentroDe(dibujo) : [];
+    if (!its.length) { toast(dibujo && dibujo.length >= 3 ? "No quedó ninguna parada pendiente adentro" : "Marcá al menos 3 puntos", true); return; }
+    const nums = new Set(its.map(it => it.num));
+    zonas = (zonas || []).map(z => z.filter(n => !nums.has(n))).filter(z => z.length); // una parada va en una sola zona
+    zonas.push(its.map(it => it.num));
+    finDibujo(); showTab("p-stops"); $("zonaMax").value = store.get("zonaMax", 15); $("zonaBox").hidden = false;
+    renderZonas(); drawZonas(false); toast("Zona " + zonas.length + " marcada: " + its.length + " paradas");
+  });
+  // al abrir un link de zona: se guarda, se limpia la dirección y se pregunta (después de entrar a la cuenta)
+  { const m = location.hash.match(/[#&]zona=([^&]+)/); if (m) { store.set("zonaRecibida", m[1]); history.replaceState(null, "", location.pathname + location.search); } }
+  async function ofrecerZona() {
+    const c = store.get("zonaRecibida", null); if (!c) return;
+    let st; try { st = await zonaLeer(c); } catch { store.set("zonaRecibida", null); toast("El link de la zona está incompleto o dañado", true); return; }
+    if (!st.length) { store.set("zonaRecibida", null); return; }
+    const pk = st.reduce((n, o) => n + 1 + (Number(o.e) || 0), 0);
+    $("zonaInInfo").textContent = st.length + " parada" + (st.length > 1 ? "s" : "") + " · " + pk + " paquetes. Se agregan a tu lista con códigos nuevos y se optimiza la ruta desde donde estás.";
+    $("zonaIn").hidden = false;
+    $("zonaInNo").onclick = () => { $("zonaIn").hidden = true; store.set("zonaRecibida", null); };
+    $("zonaInAdd").onclick = () => {
+      $("zonaIn").hidden = true; store.set("zonaRecibida", null);
+      st.forEach(o => {
+        const it = { num: nextNum(), address: o.a.trim().slice(0, 300), createdAt: Date.now() };
+        if (typeof o.y === "number" && typeof o.x === "number" && Math.abs(o.y) <= 90 && Math.abs(o.x) <= 180) { it.lat = o.y; it.lng = o.x; }
+        const e = Math.min(20, Math.max(0, parseInt(o.e, 10) || 0)); if (e) it.extra = e;
+        if (typeof o.r === "string" && o.r) it.ref = o.r.slice(0, 300);
+        if (typeof o.t === "string" && o.t) it.tel = o.t.replace(/[^\d+ ()-]/g, "").slice(0, 30);
+        items.push(it);
+      });
+      save(); refresh(true); toast("Zona agregada: " + st.length + " paradas");
+      showTab("p-stops"); optimize(true);
+    };
+  }
+  { const t0 = Date.now(), iv = setInterval(() => { if (!store.get("zonaRecibida", null)) { clearInterval(iv); return; }
+      if (Date.now() - t0 > 1500 && $("auth").hidden && (!$("perms") || $("perms").hidden)) { clearInterval(iv); ofrecerZona(); } }, 700); }
 
   refresh(true);
 })();
