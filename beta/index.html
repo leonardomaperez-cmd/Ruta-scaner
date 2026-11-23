@@ -62,7 +62,8 @@ body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--body); ov
 .scanner { position: fixed; inset: 0; z-index: 1000; background: #000; color: #fff; }
 .scanner video, .scanner .frozen { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .frame { position: absolute; left: 7%; right: 7%; top: 22%; aspect-ratio: 3 / 2; border-radius: 14px; box-shadow: 0 0 0 100vmax rgba(0,0,0,.55); }
-.frame i { position: absolute; width: 34px; height: 34px; border: 4px solid var(--laser); }
+.frame i { position: absolute; width: 34px; height: 34px; border: 4px solid var(--laser); transition: border-color .15s; }
+.frame.hit i { border-color: #22c55e; }
 .frame::after { content: ""; position: absolute; left: 10px; right: 10px; top: 50%; height: 2px; background: var(--laser); box-shadow: 0 0 12px var(--laser); opacity: .9; }
 @media (prefers-reduced-motion: no-preference) { .frame::after { animation: laser 2.2s ease-in-out infinite; } @keyframes laser { 0%, 100% { top: 12%; } 50% { top: 86%; } } }
 .scanner #frozen:not([hidden]) ~ .frame::after { display: none; }
@@ -85,6 +86,10 @@ body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--body); ov
 #stage { position: absolute; left: 0; right: 0; bottom: 0; max-height: 72vh; overflow-y: auto; background: var(--bg); color: var(--ink); border-radius: 20px 20px 0 0; padding-inline: 16px; padding-block: 16px calc(20px + env(safe-area-inset-bottom, 0px)); display: grid; gap: 10px; }
 .label { font: 700 .68rem var(--display); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 .card { background: var(--surface); border: 0; border-radius: 12px; padding: 14px; display: grid; gap: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.12); position: relative; overflow: hidden; }
+.mllist { display: grid; gap: 6px; }
+.mllist .mlrow { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 10px; padding: 6px 10px; }
+.mllist .mlrow span { flex: 1; overflow-wrap: anywhere; }
+.mllist .mlrow .btn { min-height: 34px; padding: 4px 10px; flex: none; }
 .card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--accent); }
 .btn { font: 600 1rem var(--body); border-radius: 8px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 12px 16px; cursor: pointer; min-height: 46px; text-align: center; text-decoration: none; display: block; }
 .btn-primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; font: 600 1.1rem var(--display); letter-spacing: .01em; padding: 14px; min-height: 52px; box-shadow: 0 4px 10px rgba(0,105,72,.25); }
@@ -114,6 +119,19 @@ body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--body); ov
 #arrive .row .btn { flex: 1; min-height: 42px; padding: 8px; }
 #finish { position: fixed; left: 12px; right: 12px; top: calc(56px + var(--top)); z-index: 975; background: #1b2335; border-left: 5px solid #85f8c4; color: #fff; border-radius: 16px; padding: 14px; box-shadow: 0 8px 24px rgba(0,0,0,.4); display: grid; gap: 8px; max-width: 520px; margin: 0 auto; }
 #finish[hidden] { display: none; }
+#zonaIn { position: fixed; left: 12px; right: 12px; top: calc(56px + var(--top)); z-index: 1990; background: #1b2335; border-left: 5px solid #85f8c4; color: #fff; border-radius: 16px; padding: 14px; box-shadow: 0 8px 24px rgba(0,0,0,.4); display: grid; gap: 8px; max-width: 520px; margin: 0 auto; }
+#zonaIn[hidden] { display: none; }
+#zonaBar { position: fixed; left: 12px; right: 12px; top: calc(56px + var(--top)); z-index: 970; background: #1b2335; border-left: 5px solid #ffb74d; color: #fff; border-radius: 16px; padding: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.4); display: grid; gap: 8px; max-width: 520px; margin: 0 auto; font: 600 .92rem var(--body); }
+#zonaBar[hidden] { display: none; }
+#zonaBar .row { display: flex; gap: 8px; flex-wrap: nowrap; }
+#zonaBar .row .btn { flex: 1; min-height: 40px; padding: 6px; }
+#zonaIn .big { font: 700 1.4rem/1.1 var(--display); color: #85f8c4; }
+#zonaIn .row { display: flex; gap: 8px; }
+#zonaIn .row .btn { flex: 1; min-height: 42px; padding: 8px; }
+.zrow { display: grid; grid-template-columns: 14px 1fr auto; gap: 8px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
+.zrow i { width: 14px; height: 14px; border-radius: 50%; }
+.zrow .zb { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.zlbl { background: rgba(22,32,43,.85); color: #fff; font: 700 .8rem var(--body); padding: 2px 8px; border-radius: 999px; white-space: nowrap; border: 0; box-shadow: none; }
 #finish .big { font: 700 1.6rem/1.1 var(--display); letter-spacing: -.01em; color: #85f8c4; }
 #finish .row { display: flex; gap: 8px; }
 #finish .row .btn { flex: 1; min-height: 42px; padding: 8px; }
@@ -363,11 +381,20 @@ input:disabled { opacity: .45; }
   <div id="finishInfo"></div>
   <div class="row"><button class="btn btn-primary" id="finishNew" type="button">Armar nueva ruta</button><button class="btn" id="finishLater" type="button">Todavía no</button></div>
 </div>
+<div id="zonaBar" hidden>
+  <div id="zonaBarTxt">Tocá el mapa para marcar los bordes de la zona (mínimo 3 puntos)</div>
+  <div class="row"><button class="btn" id="zonaBarUndo" type="button">↩ Deshacer</button><button class="btn" id="zonaBarNo" type="button">Cancelar</button><button class="btn btn-primary" id="zonaBarOk" type="button">Listo</button></div>
+</div>
+<div id="zonaIn" role="alert" hidden>
+  <div class="big">Te pasaron una zona</div>
+  <div id="zonaInInfo"></div>
+  <div class="row"><button class="btn btn-primary" id="zonaInAdd" type="button">Agregar a mi ruta</button><button class="btn" id="zonaInNo" type="button">Ahora no</button></div>
+</div>
 <div class="scanner" id="scanner" hidden>
   <video id="cam" playsinline muted autoplay></video>
   <img id="frozen" class="frozen" alt="" hidden>
   <div class="frame" id="frame"><i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i></div>
-  <div class="scan-top"><p id="scanHint">Encuadra la dirección dentro del recuadro y toca el botón</p><div class="scan-tools"><button class="x" id="torchBtn" type="button" aria-label="Linterna" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h12v5l-3 4v11H9V11L6 7z"/><path d="M12 14v2"/></svg></button><button class="x" id="closeScan" type="button" aria-label="Cerrar escáner">✕</button></div></div>
+  <div class="scan-top"><p id="scanHint">Apuntá al QR de la etiqueta (se lee solo) o encuadrá la dirección y tocá el botón</p><div class="scan-tools"><button class="x" id="torchBtn" type="button" aria-label="Linterna" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2h12v5l-3 4v11H9V11L6 7z"/><path d="M12 14v2"/></svg></button><button class="x" id="closeScan" type="button" aria-label="Cerrar escáner">✕</button></div></div>
   <div class="scan-msg" id="toast" role="status" hidden></div>
   <div class="scan-bottom" id="scanControls">
     <button class="side" id="galleryBtn" type="button" aria-label="Elegir foto de la galería"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg></button>
@@ -436,6 +463,15 @@ input:disabled { opacity: .45; }
       <input id="pdfPrice" type="text" inputmode="decimal" placeholder="Ej.: 1500" autocomplete="off">
       <span class="note">El PDF muestra el precio de cada parada, la suma de los paquetes entregados y los km de la ruta.</span>
       <div class="row"><button id="pdfCancel" class="btn" type="button">Cancelar</button><button id="pdfGo" class="btn btn-primary" type="button">Descargar PDF</button></div>
+    </div>
+    <button id="zonaBtn" class="btn" type="button" style="width:100%;margin-top:8px">✂️ Dividir en zonas / pasar a otro chofer</button>
+    <div class="card" id="zonaBox" hidden style="margin-top:8px">
+      <label class="label" for="zonaMax">Paquetes por zona (máximo)</label>
+      <input id="zonaMax" type="text" inputmode="numeric" autocomplete="off" placeholder="15">
+      <span class="note">Una parada con +2 cuenta 3 paquetes. Las zonas siguen el orden de la ruta optimizada, así cada una queda junta en el mapa. Una dirección nunca se parte entre dos zonas.</span>
+      <div class="row"><button id="zonaCancel" class="btn" type="button">Cerrar</button><button id="zonaGo" class="btn btn-primary" type="button">Dividir</button></div>
+      <button id="zonaDraw" class="btn" type="button">✏️ Marcar una zona a mano en el mapa</button>
+      <div id="zonaList"></div>
     </div>
     <button id="clearDone" class="btn" type="button" style="width:100%;margin-top:8px">Quitar entregadas</button>
     <button id="newRoute" class="btn" type="button" style="width:100%;margin-top:8px">🔄 Armar nueva ruta</button>
@@ -548,9 +584,27 @@ input:disabled { opacity: .45; }
       <button class="btn" id="planCheck" type="button" hidden>Ya pagué, revisar</button>
       <button class="btn" id="logoutBtn" type="button" hidden>Cerrar sesión</button>
     </div>
+    <div class="card" id="mlCard" hidden>
+      <strong>Mercado Libre Flex</strong>
+      <span class="note">Mandale este link a cada vendedor. Cuando lo abra y toque «Permitir», al escanear el QR de sus envíos Flex la dirección sale directo de Mercado Libre.</span>
+      <button class="btn" id="mlLinkBtn" type="button">🔗 Link para un vendedor</button>
+      <span class="note">Si tenés una cuenta de negocio de mensajería (courier Flex), conectala acá. Tiene que ser la cuenta principal (administrador) y estar verificada en Mercado Libre.</span>
+      <button class="btn" id="mlMineBtn" type="button">👤 Conectar mi cuenta de Mercado Libre</button>
+      <label class="check"><input id="mlCourierChk" type="checkbox"> Mi cuenta conectada es de mensajería: registrar cada envío escaneado a mi nombre antes de pedir la dirección</label>
+      <button class="btn" id="mlTestBtn" type="button">🧪 Probar con este QR</button>
+      <button class="btn" id="mlTestNumBtn" type="button">⌨️ Probar con el número de envío</button>
+      <input type="file" id="mlTestFile" accept="image/*" capture="environment" hidden>
+      <span class="note" id="mlTestMsg" style="white-space:pre-line"></span>
+      <span class="note" id="mlMsg"></span>
+      <strong>Cuentas vinculadas</strong>
+      <div id="mlList" class="mllist"></div>
+      <button class="btn" id="mlOtherBtn" type="button">➕ Vincular otra cuenta de Mercado Libre</button>
+      <span class="note" id="mlOtherMsg" style="white-space:pre-line"></span>
+    </div>
     <p class="note" id="nativeInfo" hidden></p>
     <button class="btn" id="permsBtn" type="button" hidden>Revisar permisos de la app</button>
     <p class="note">Las paradas se guardan en este teléfono. Exporta el CSV si quieres guardarlas aparte.</p>
+    <p class="note"><a href="../legal.html" target="_blank" rel="noopener">Privacidad y términos</a></p>
    </div>
   </section>
 
@@ -1079,7 +1133,15 @@ input:disabled { opacity: .45; }
       return await new Promise(r => c.toBlob(b => r(b || file), "image/jpeg", 0.9));
     } catch { return file; }
   }
-  let ocr = null;
+  let ocr = null, ocrWarm = null;
+  // Tesseract tarda en arrancar (baja el idioma y el motor la primera vez). Se prepara apenas abre la app,
+  // así la primera etiqueta no espera. En la APK no hace falta: lee ML Kit.
+  function warmOCR() {
+    if (ocr || ocrWarm || plug("LectorTexto") || !window.Tesseract) return ocrWarm;
+    ocrWarm = Tesseract.createWorker("spa", 1).then(w => (ocr = w)).catch(e => { console.warn("OCR", e); ocrWarm = null; return null; });
+    return ocrWarm;
+  }
+  window.addEventListener("load", () => setTimeout(warmOCR, 1500));
   const tidyLines = (arr) => arr.map(l => String(l).replace(/[|_~«»]+/g, " ").replace(/\s+/g, " ").trim()).filter(l => l.length > 2);
   const toDataURL = (b) => new Promise((ok, no) => { const r = new FileReader(); r.onload = () => ok(r.result); r.onerror = no; r.readAsDataURL(b); });
   // En la app de Android lee ML Kit de Google (rápido, sin internet); en el navegador, Tesseract.
@@ -1090,7 +1152,8 @@ input:disabled { opacity: .45; }
       catch (e) { console.warn("ML Kit", e); }
     }
     if (!window.Tesseract) throw new Error("no se pudo cargar el lector");
-    if (!ocr) ocr = await Tesseract.createWorker("spa", 1, { logger: m => { if (typeof m.progress === "number") onP(m.progress); } });
+    if (!ocr) await warmOCR();
+    if (!ocr) throw new Error("no se pudo cargar el lector");
     const { data } = await ocr.recognize(img);
     return tidyLines(String(data.text || "").split("\n"));
   }
@@ -1279,11 +1342,17 @@ input:disabled { opacity: .45; }
   // QR de la etiqueta (Mercado Libre Flex trae un JSON con "id" del envío). Sirve para reconocer un paquete ya guardado.
   let jsQRp = null;
   const loadJsQR = () => jsQRp || (jsQRp = new Promise((res, rej) => { const sc = document.createElement("script"); sc.src = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"; sc.onload = () => res(window.jsQR); sc.onerror = () => { jsQRp = null; rej(new Error("jsQR")); }; document.head.append(sc); }));
-  async function readQR(src) {
+  // QR de Mercado Libre Flex: {"id":"…","sender_id":…,"hash_code":"…"}; lo guarda para pedir la dirección a Mercado Libre
+  let qrFlex = null;
+  // para el botón de prueba de Ajustes: lee el QR de una foto y devuelve {id, sender_id} (o {id} si no es Flex)
+  let qrOtro = ""; // texto de un QR que no es Flex (solo para el mensaje del botón de prueba)
+  window.leerQRFlex = async (file) => { await readQR(file); return qrFlex || (qrOtro ? { id: qrOtro } : null); };
+  async function readQR(src, given) {
+    qrFlex = null; qrOtro = "";
     try {
-      const bmp = src instanceof HTMLCanvasElement ? src : await createImageBitmap(src);
-      let raw = "";
-      if ("BarcodeDetector" in window) {
+      let raw = given || "";
+      const bmp = raw ? null : src instanceof HTMLCanvasElement ? src : await createImageBitmap(src);
+      if (!raw && "BarcodeDetector" in window) {
         try { const r = await new BarcodeDetector({ formats: ["qr_code"] }).detect(bmp); if (r[0]) raw = r[0].rawValue; } catch {}
       }
       if (!raw) {
@@ -1295,8 +1364,10 @@ input:disabled { opacity: .45; }
         if (r) raw = r.data;
       }
       raw = String(raw || "").trim(); if (!raw) return "";
-      try { const o = JSON.parse(raw); if (o && o.id != null) return String(o.id); } catch {}
-      return raw;
+      // solo se usan los QR de Mercado Libre Flex; cualquier otro QR se ignora y la dirección se lee de la etiqueta
+      try { const o = JSON.parse(raw); if (o && o.id != null && o.sender_id != null) { qrFlex = { id: String(o.id), sender_id: String(o.sender_id) }; return String(o.id); } } catch {}
+      qrOtro = raw.slice(0, 80);
+      return "";
     } catch { return ""; }
   }
   function showVerify(it) {
@@ -1387,13 +1458,15 @@ input:disabled { opacity: .45; }
   let stream = null;
   async function openScanner() {
     $("scanner").hidden = false; $("stage").hidden = true; $("frozen").hidden = true; $("scanControls").hidden = false;
-    $("scanHint").textContent = "Encuadra la dirección dentro del recuadro y toca el botón";
+    $("scanHint").textContent = "Apuntá al QR de la etiqueta (se lee solo) o encuadrá la dirección y tocá el botón";
+    warmOCR();
     try {
       // en la app de Android hay que pedir el permiso de cámara del teléfono antes de abrirla
       const CAM = plug("Camera");
       if (CAM && !stream) { const st = await CAM.requestPermissions({ permissions: ["camera"] }).catch(() => null); if (st && st.camera === "denied") throw new Error("permiso"); }
       if (!stream) stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
       $("cam").srcObject = stream; await $("cam").play().catch(() => {});
+      startLiveQR();
       // linterna: solo si la cámara del teléfono la tiene
       try { const tr = stream.getVideoTracks()[0], caps = tr.getCapabilities ? tr.getCapabilities() : {}; $("torchBtn").hidden = !caps.torch; } catch { $("torchBtn").hidden = true; }
     } catch (e) {
@@ -1405,7 +1478,7 @@ input:disabled { opacity: .45; }
   $("torchBtn").addEventListener("click", async () => {
     try { const tr = stream && stream.getVideoTracks()[0]; if (!tr) return; torchOn = !torchOn; await tr.applyConstraints({ advanced: [{ torch: torchOn }] }); $("torchBtn").classList.toggle("on", torchOn); } catch { torchOn = false; $("torchBtn").classList.remove("on"); }
   });
-  function stopCam() { torchOn = false; $("torchBtn").classList.remove("on"); if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } $("cam").srcObject = null; }
+  function stopCam() { stopLiveQR(); torchOn = false; $("torchBtn").classList.remove("on"); if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } $("cam").srcObject = null; }
   // el escáner se abre desde la burbuja 📝; al cerrarlo se vuelve a ella
   let scanInto = null;
   function closeScanner() { stopCam(); $("scanner").hidden = true; refresh(true); if (scanInto) { scanInto = null; showTab("p-review"); } }
@@ -1423,6 +1496,47 @@ input:disabled { opacity: .45; }
     const c = document.createElement("canvas"); c.width = Math.round(w); c.height = Math.round(h);
     c.getContext("2d").drawImage(v, x, y, w, h, 0, 0, c.width, c.height);
     return c;
+  }
+  // ---------- lector de QR en vivo: mientras la cámara está abierta busca el QR solo, sin sacar foto ----------
+  // Usa el lector del teléfono (BarcodeDetector) y, si no está (iPhone), jsQR. Al encontrar un QR nuevo
+  // captura la etiqueta en ese momento y sigue igual que el botón: si ya está guardado muestra parada y letra.
+  let liveRun = 0, liveSeen = "", liveLast = 0, liveDet = null, liveCv = null;
+  async function decodeLive(v) {
+    if ("BarcodeDetector" in window) {
+      try { liveDet = liveDet || new BarcodeDetector({ formats: ["qr_code"] }); const r = await liveDet.detect(v); return r[0] ? r[0].rawValue : ""; } catch { liveDet = null; }
+    }
+    const jsQR = await loadJsQR();
+    const k = Math.min(1, 720 / Math.max(v.videoWidth, v.videoHeight));
+    liveCv = liveCv || document.createElement("canvas");
+    liveCv.width = Math.round(v.videoWidth * k); liveCv.height = Math.round(v.videoHeight * k);
+    const g = liveCv.getContext("2d", { willReadFrequently: true }); g.drawImage(v, 0, 0, liveCv.width, liveCv.height);
+    const r = jsQR(g.getImageData(0, 0, liveCv.width, liveCv.height).data, liveCv.width, liveCv.height, { inversionAttempts: "dontInvert" });
+    return r ? r.data : "";
+  }
+  function startLiveQR() {
+    const my = ++liveRun; liveSeen = ""; liveLast = 0;
+    const tick = async () => {
+      if (my !== liveRun) return;
+      const v = $("cam");
+      if (stream && !$("scanner").hidden && $("stage").hidden && $("frozen").hidden && v.videoWidth && !document.hidden) {
+        let raw = ""; try { raw = String(await decodeLive(v) || "").trim(); } catch {}
+        if (my !== liveRun) return;
+        if (raw) { liveLast = Date.now(); if (raw !== liveSeen) { liveSeen = raw; onLiveQR(raw); } }
+        else if (liveSeen && Date.now() - liveLast > 1500) liveSeen = ""; // el QR salió de cuadro: si vuelve, se lee de nuevo
+      }
+      setTimeout(tick, "BarcodeDetector" in window ? 200 : 350);
+    };
+    tick();
+  }
+  function stopLiveQR() { liveRun++; liveSeen = ""; }
+  async function onLiveQR(raw) {
+    const id = await readQR(null, raw);
+    if (!id) return; // QR que no sirve: se ignora, la etiqueta se lee con el botón
+    const c = grabFrame(); if (!c) return;
+    const v = $("cam"), full = document.createElement("canvas"); full.width = v.videoWidth; full.height = v.videoHeight; full.getContext("2d").drawImage(v, 0, 0);
+    try { if (navigator.vibrate) navigator.vibrate(60); } catch {}
+    const fr = $("frame"); fr.classList.add("hit"); setTimeout(() => fr.classList.remove("hit"), 700);
+    c.toBlob(b => { if (b) scanToItem(b, full, raw); }, "image/jpeg", 0.92);
   }
   $("closeScan").addEventListener("click", closeScanner);
   $("retakeBtn").addEventListener("click", resumeScan);
@@ -1446,12 +1560,17 @@ input:disabled { opacity: .45; }
   
   // ---------- escaneo: cada etiqueta se guarda sola y va directo a Paradas ----------
   let reading = 0;
-  const scanIdle = "Encuadra la dirección dentro del recuadro y toca el botón";
+  const scanIdle = "Apuntá al QR de la etiqueta (se lee solo) o encuadrá la dirección y tocá el botón";
   const scanBusy = () => { $("scanHint").textContent = reading ? "Leyendo " + reading + (reading === 1 ? " etiqueta…" : " etiquetas…") + " Podés seguir escaneando." : scanIdle; };
   // Lee la etiqueta: en Android ML Kit primero; si no cierra, la IA elegida; si no hay, el lector del teléfono.
   // Por ahora la etiqueta se lee solo con el OCR del teléfono (ML Kit en la APK, Tesseract en la web). true vuelve a usar la IA.
   const AI_ON = false;
-  async function readLabel(file) {
+  async function readLabel(file, flex) {
+    // envío Flex de un vendedor vinculado: la dirección sale directo de Mercado Libre, sin leer la etiqueta
+    if (flex && window.envioML) {
+      const m = await window.envioML(flex.id, flex.sender_id).catch(() => null);
+      if (m && m.address) return { address: m.address, ref: m.ref || "", lat: m.lat, lng: m.lng, by: "Mercado Libre" };
+    }
     const aiv = $("aiSel").value, useAlt = aiv !== "gemini", AI = { llama: "Qwen" }[aiv] || "Gemini";
     const ownKey = $({ llama: "groqInput" }[aiv] || "geminiInput").value.trim(), gkey = AI_ON ? ownKey || (!useAlt && window.leerEnServidor ? "servidor" : "") : "";
     const ML = plug("LectorTexto") && !(AI_ON && $("geminiAlwaysChk").checked);
@@ -1470,9 +1589,9 @@ input:disabled { opacity: .45; }
     const lines = await ocrP;
     return { address: lines && lines.length ? ocrAddress(lines) : "", by: "teléfono" };
   }
-  async function scanToItem(file, qrSrc) {
+  async function scanToItem(file, qrSrc, qrRaw) {
     $("frozen").hidden = true; $("scanControls").hidden = false;
-    const qr = await readQR(qrSrc || file);
+    const qr = await readQR(qrSrc || file, qrRaw), flex = qrFlex;
     if (qr) {
       const known = items.find(it => it.qr === qr);
       if (known) { $("stage").hidden = false; $("previewBox").hidden = true; $("lines").hidden = true; $("scanControls").hidden = true; showVerify(known); return; }
@@ -1480,7 +1599,7 @@ input:disabled { opacity: .45; }
     if (scanInto) {
       // abierto desde la burbuja: lo leído completa el formulario
       reading++; scanBusy();
-      let r = null; try { r = await readLabel(file); } catch (e) { console.warn(e); } finally { reading--; scanBusy(); }
+      let r = null; try { r = await readLabel(file, flex); } catch (e) { console.warn(e); } finally { reading--; scanBusy(); }
       if (!r || !r.address) { toast("No leí la dirección. Probá de nuevo con la etiqueta más cerca.", true); return; }
       const fill = scanInto; closeScanner(); fill(r); toast("✓ Leída: " + r.address + ". Revisala y tocá Guardar.");
       return;
@@ -1490,12 +1609,13 @@ input:disabled { opacity: .45; }
     items.push(it); save();
     reading++; scanBusy();
     try {
-      const r = await readLabel(file);
+      const r = await readLabel(file, flex);
       if (!r.address) { items = items.filter(x => x !== it); save(); refresh(false); toast("No leí la dirección. Probá de nuevo con la etiqueta más cerca.", true); return; }
       it.address = r.address; if (r.ref) it.ref = r.ref;
+      if (r.lat != null && r.lng != null) { it.lat = r.lat; it.lng = r.lng; }
       save(); refresh(false);
-      toast("✓ " + code(it.num) + " · " + r.address);
-      { try { const g = await geocode(r.address, $("keyInput").value.trim()); if (g) { it.lat = g.lat; it.lng = g.lng; save(); refresh(false); } } catch {} }
+      toast("✓ " + code(it.num) + " · " + r.address + (r.by === "Mercado Libre" ? " (de Mercado Libre)" : ""));
+      if (it.lat == null) { try { const g = await geocode(r.address, $("keyInput").value.trim()); if (g) { it.lat = g.lat; it.lng = g.lng; save(); refresh(false); } } catch {} }
     } catch (e) { items = items.filter(x => x !== it); save(); refresh(false); toast("No se pudo leer la etiqueta (" + (e.message || e) + ")", true); }
     finally { reading--; scanBusy(); }
   }
@@ -2704,6 +2824,172 @@ input:disabled { opacity: .45; }
     finally { $("pdfGo").disabled = false; $("pdfGo").textContent = "Descargar PDF"; }
   });
 
+  // ---------- zonas: dividir la ruta en grupos de hasta N paquetes y pasarle uno a otro chofer ----------
+  // El link lleva las paradas adentro (después del #, no pasa por ningún servidor): el otro chofer lo abre y se le agregan.
+  const ZCOL = ["#e53935", "#1e88e5", "#fb8c00", "#8e24aa", "#00897b", "#c0ca33", "#6d4c41", "#d81b60", "#3949ab", "#43a047"];
+  const pq = (it) => 1 + (Number(it.extra) || 0);
+  let zonas = null; // [[num, ...], ...]
+  const zoneLayer = L.layerGroup().addTo(map);
+  function hull(pts) {
+    const p = pts.map(x => [x[1], x[0]]).sort((a, b) => a[0] - b[0] || a[1] - b[1]); if (p.length < 3) return pts;
+    const cr = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]), lo = [], up = [];
+    for (const q of p) { while (lo.length >= 2 && cr(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); }
+    for (const q of p.slice().reverse()) { while (up.length >= 2 && cr(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop(); up.push(q); }
+    return lo.slice(0, -1).concat(up.slice(0, -1)).map(x => [x[1], x[0]]);
+  }
+  function drawZonas(fit) {
+    zoneLayer.clearLayers(); if (!zonas) return; const all = [];
+    zonas.forEach((z, i) => {
+      const its = z.map(byNum).filter(it => it && typeof it.lat === "number"); if (!its.length) return;
+      const col = ZCOL[i % ZCOL.length], pts = its.map(it => [it.lat, it.lng]); all.push(...pts);
+      const h = hull(pts);
+      if (h.length >= 3) L.polygon(h, { color: col, weight: 3, fillOpacity: .15, interactive: false }).addTo(zoneLayer);
+      its.forEach(it => L.circleMarker([it.lat, it.lng], { radius: 15, color: col, weight: 4, fill: false, interactive: false }).addTo(zoneLayer));
+      const c = [pts.reduce((a, p) => a + p[0], 0) / pts.length, pts.reduce((a, p) => a + p[1], 0) / pts.length];
+      L.tooltip({ permanent: true, direction: "center", className: "zlbl" }).setLatLng(c).setContent("Zona " + (i + 1)).addTo(zoneLayer);
+    });
+    if (fit && all.length) map.fitBounds(all, { padding: [30, 30], maxZoom: 16 });
+  }
+  // reparte en partes parejas: con 32 paquetes y máximo 15 salen 3 zonas de ~11 (nunca más del máximo)
+  function dividir(list, max) {
+    const total = list.reduce((n, it) => n + pq(it), 0), k = Math.ceil(total / max), out = [];
+    let cur = [], n = 0, left = total, zl = k;
+    list.forEach(it => {
+      const target = Math.min(max, Math.ceil(left / zl));
+      if (cur.length && (n + pq(it) > max || n >= target)) { out.push(cur); left -= n; zl = Math.max(1, zl - 1); cur = []; n = 0; }
+      cur.push(it.num); n += pq(it);
+    });
+    if (cur.length) out.push(cur);
+    return out;
+  }
+  async function hacerZonas() {
+    const max = Math.max(1, parseInt($("zonaMax").value, 10) || 15); store.set("zonaMax", max); $("zonaMax").value = max;
+    const pend = items.filter(it => !it.done && !it.review && it.address);
+    const sinMapa = pend.filter(it => typeof it.lat !== "number");
+    if (!pend.length) { toast("No hay paradas pendientes", true); return; }
+    let list;
+    if (route && route.order.length) list = route.order.map(byNum).filter(it => it && !it.done && typeof it.lat === "number");
+    else {
+      const loc = pend.filter(it => typeof it.lat === "number");
+      if (!loc.length) { toast("Primero tocá «Optimizar ruta» para ubicar las direcciones", true); return; }
+      const st = (await whereAmI(5000)) || loc[0];
+      list = (await routeLocal(st, loc, false)).order.map(byNum);
+    }
+    const resto = pend.filter(it => !list.includes(it)); // sin ubicar o fuera de la ruta: van al final
+    zonas = dividir(list.concat(resto.filter(it => typeof it.lat === "number")), max);
+    if (sinMapa.length) toast(sinMapa.length + " parada(s) sin ubicar en el mapa no entraron en ninguna zona", true);
+    renderZonas(); drawZonas(true);
+  }
+  function renderZonas() {
+    const box = $("zonaList"); box.textContent = ""; if (!zonas) return;
+    zonas.forEach((z, i) => {
+      const its = z.map(byNum).filter(Boolean); if (!its.length) return;
+      const row = document.createElement("div"); row.className = "zrow";
+      const dot = document.createElement("i"); dot.style.background = ZCOL[i % ZCOL.length];
+      const t = document.createElement("div");
+      t.innerHTML = "<b>Zona " + (i + 1) + "</b><div class='note'>" + its.length + " parada" + (its.length > 1 ? "s" : "") + " · " + its.reduce((n, it) => n + pq(it), 0) + " paquetes · " + its.map(it => code(it.num)).slice(0, 6).join(", ") + (its.length > 6 ? "…" : "") + "</div>";
+      const b = document.createElement("div"); b.className = "zb";
+      const ver = document.createElement("button"); ver.className = "mini"; ver.type = "button"; ver.textContent = "🗺️ Ver";
+      ver.onclick = () => { closeSheets(); map.fitBounds(its.filter(it => typeof it.lat === "number").map(it => [it.lat, it.lng]), { padding: [40, 40], maxZoom: 16 }); };
+      const pas = document.createElement("button"); pas.className = "mini"; pas.type = "button"; pas.textContent = "📤 Pasar";
+      pas.onclick = async () => { await pasarZona(its, i + 1); quitar.hidden = false; };
+      const quitar = document.createElement("button"); quitar.className = "mini"; quitar.type = "button"; quitar.textContent = "🗑️ Ya la pasé, quitarla"; quitar.hidden = true;
+      let qt = 0;
+      quitar.onclick = () => {
+        if (Date.now() - qt > 4000) { qt = Date.now(); quitar.textContent = "Tocá de nuevo para quitar " + its.length; return; }
+        const nums = new Set(its.map(it => it.num));
+        items.forEach(it => { if (nums.has(it.num)) { if (it.photo) fotos.del(it.num); if (it.cfoto) fotos.del("c" + it.num); } });
+        items = items.filter(it => !nums.has(it.num));
+        if (route) { route.order = route.order.filter(n => !nums.has(n)); if (!route.order.length) route = null; }
+        zonas = zonas.filter((_, k) => k !== i); if (!zonas.length) zonas = null;
+        save(); refresh(false); renderZonas(); drawZonas(false);
+        toast("Zona quitada. Tocá «Optimizar ruta» para reordenar lo que te queda");
+      };
+      b.append(ver, pas, quitar); row.append(dot, t, b); box.append(row);
+    });
+  }
+  const b64u = (u8) => { let s = ""; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
+  const unb64u = (s) => { const b = atob(s.replace(/-/g, "+").replace(/_/g, "/")); const u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; };
+  const pipe = async (u8, Stream) => new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(new Stream("deflate-raw"))).arrayBuffer());
+  async function zonaCodigo(its) {
+    const data = { v: 1, s: its.map(it => { const o = { a: it.address }; if (typeof it.lat === "number") { o.y = +it.lat.toFixed(6); o.x = +it.lng.toFixed(6); }
+      if (pq(it) > 1) o.e = pq(it) - 1; if (it.ref) o.r = it.ref; if (it.tel) o.t = it.tel; return o; }) };
+    const raw = new TextEncoder().encode(JSON.stringify(data));
+    if ("CompressionStream" in window) { try { return "1" + b64u(await pipe(raw, CompressionStream)); } catch {} }
+    return "0" + b64u(raw);
+  }
+  async function zonaLeer(c) {
+    let u8 = unb64u(c.slice(1));
+    if (c[0] === "1") u8 = await pipe(u8, DecompressionStream);
+    const d = JSON.parse(new TextDecoder().decode(u8));
+    return (d && Array.isArray(d.s) ? d.s : []).filter(o => o && typeof o.a === "string" && o.a.trim()).slice(0, 300);
+  }
+  async function pasarZona(its, n) {
+    const url = location.origin + location.pathname + "#zona=" + await zonaCodigo(its);
+    const pk = its.reduce((k, it) => k + pq(it), 0);
+    const text = "Te paso la zona " + n + ": " + its.length + " paradas, " + pk + " paquetes. Abrí este link con Ruta Escáner y se te cargan solas:";
+    if (navigator.share) { try { await navigator.share({ title: "Zona " + n, text, url }); return; } catch (e) { if (e && e.name === "AbortError") return; } }
+    window.open("https://wa.me/?text=" + encodeURIComponent(text + "\n" + url), "_blank", "noopener");
+  }
+  $("zonaBtn").addEventListener("click", () => { $("zonaMax").value = store.get("zonaMax", 15); $("zonaBox").hidden = false; if (zonas) { renderZonas(); drawZonas(false); } });
+  $("zonaCancel").addEventListener("click", () => { $("zonaBox").hidden = true; zonas = null; renderZonas(); drawZonas(false); });
+  $("zonaGo").addEventListener("click", async () => { $("zonaGo").disabled = true; try { await hacerZonas(); } catch (e) { toast("No se pudo dividir: " + (e.message || e), true); } finally { $("zonaGo").disabled = false; } });
+  // zona a mano: el chofer toca puntos en el mapa y las paradas pendientes que quedan adentro forman una zona
+  let dibujo = null; const drawLayer = L.layerGroup().addTo(map);
+  const adentro = (pt, poly) => { let c = false; for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [yi, xi] = poly[i], [yj, xj] = poly[j];
+    if ((yi > pt[0]) !== (yj > pt[0]) && pt[1] < (xj - xi) * (pt[0] - yi) / (yj - yi) + xi) c = !c; } return c; };
+  const dentroDe = (poly) => poly.length < 3 ? [] : orderedItems().filter(it => !it.done && !it.review && typeof it.lat === "number" && adentro([it.lat, it.lng], poly));
+  function pintarDibujo() {
+    drawLayer.clearLayers(); if (!dibujo) return;
+    if (dibujo.length >= 3) L.polygon(dibujo, { color: "#ffb74d", weight: 3, dashArray: "6 6", fillOpacity: .18, interactive: false }).addTo(drawLayer);
+    else if (dibujo.length === 2) L.polyline(dibujo, { color: "#ffb74d", weight: 3, dashArray: "6 6", interactive: false }).addTo(drawLayer);
+    dibujo.forEach(p => L.circleMarker(p, { radius: 6, color: "#fff", weight: 2, fillColor: "#ffb74d", fillOpacity: 1, interactive: false }).addTo(drawLayer));
+    const its = dentroDe(dibujo);
+    $("zonaBarTxt").textContent = dibujo.length < 3 ? "Tocá el mapa para marcar los bordes de la zona (" + dibujo.length + " de mínimo 3 puntos)"
+      : "Adentro: " + its.length + " parada" + (its.length === 1 ? "" : "s") + " · " + its.reduce((n, it) => n + pq(it), 0) + " paquetes. Seguí marcando o tocá Listo.";
+  }
+  const finDibujo = () => { dibujo = null; pintarDibujo(); $("zonaBar").hidden = true; map.getContainer().style.cursor = ""; };
+  map.on("click", (e) => { if (!dibujo) return; dibujo.push([e.latlng.lat, e.latlng.lng]); pintarDibujo(); });
+  $("zonaDraw").addEventListener("click", () => { closeSheets(); dibujo = []; pintarDibujo(); $("zonaBar").hidden = false; map.getContainer().style.cursor = "crosshair"; });
+  $("zonaBarUndo").addEventListener("click", () => { if (dibujo && dibujo.length) { dibujo.pop(); pintarDibujo(); } });
+  $("zonaBarNo").addEventListener("click", () => { finDibujo(); showTab("p-stops"); });
+  $("zonaBarOk").addEventListener("click", () => {
+    const its = dibujo ? dentroDe(dibujo) : [];
+    if (!its.length) { toast(dibujo && dibujo.length >= 3 ? "No quedó ninguna parada pendiente adentro" : "Marcá al menos 3 puntos", true); return; }
+    const nums = new Set(its.map(it => it.num));
+    zonas = (zonas || []).map(z => z.filter(n => !nums.has(n))).filter(z => z.length); // una parada va en una sola zona
+    zonas.push(its.map(it => it.num));
+    finDibujo(); showTab("p-stops"); $("zonaMax").value = store.get("zonaMax", 15); $("zonaBox").hidden = false;
+    renderZonas(); drawZonas(false); toast("Zona " + zonas.length + " marcada: " + its.length + " paradas");
+  });
+  // al abrir un link de zona: se guarda, se limpia la dirección y se pregunta (después de entrar a la cuenta)
+  { const m = location.hash.match(/[#&]zona=([^&]+)/); if (m) { store.set("zonaRecibida", m[1]); history.replaceState(null, "", location.pathname + location.search); } }
+  async function ofrecerZona() {
+    const c = store.get("zonaRecibida", null); if (!c) return;
+    let st; try { st = await zonaLeer(c); } catch { store.set("zonaRecibida", null); toast("El link de la zona está incompleto o dañado", true); return; }
+    if (!st.length) { store.set("zonaRecibida", null); return; }
+    const pk = st.reduce((n, o) => n + 1 + (Number(o.e) || 0), 0);
+    $("zonaInInfo").textContent = st.length + " parada" + (st.length > 1 ? "s" : "") + " · " + pk + " paquetes. Se agregan a tu lista con códigos nuevos y se optimiza la ruta desde donde estás.";
+    $("zonaIn").hidden = false;
+    $("zonaInNo").onclick = () => { $("zonaIn").hidden = true; store.set("zonaRecibida", null); };
+    $("zonaInAdd").onclick = () => {
+      $("zonaIn").hidden = true; store.set("zonaRecibida", null);
+      st.forEach(o => {
+        const it = { num: nextNum(), address: o.a.trim().slice(0, 300), createdAt: Date.now() };
+        if (typeof o.y === "number" && typeof o.x === "number" && Math.abs(o.y) <= 90 && Math.abs(o.x) <= 180) { it.lat = o.y; it.lng = o.x; }
+        const e = Math.min(20, Math.max(0, parseInt(o.e, 10) || 0)); if (e) it.extra = e;
+        if (typeof o.r === "string" && o.r) it.ref = o.r.slice(0, 300);
+        if (typeof o.t === "string" && o.t) it.tel = o.t.replace(/[^\d+ ()-]/g, "").slice(0, 30);
+        items.push(it);
+      });
+      save(); refresh(true); toast("Zona agregada: " + st.length + " paradas");
+      showTab("p-stops"); optimize(true);
+    };
+  }
+  { const t0 = Date.now(), iv = setInterval(() => { if (!store.get("zonaRecibida", null)) { clearInterval(iv); return; }
+      if (Date.now() - t0 > 1500 && $("auth").hidden && (!$("perms") || $("perms").hidden)) { clearInterval(iv); ofrecerZona(); } }, 700); }
+
   refresh(true);
 })();
 </script>
@@ -2712,8 +2998,8 @@ input:disabled { opacity: .45; }
 // Mientras supabaseUrl esté vacío, la app funciona como siempre, sin pedir cuenta.
 // Las cuentas se activan a mano en Supabase (tabla «perfiles», columna «activo») cuando se acredita el pago.
 const CUENTA = {
-  supabaseUrl: "https://iinrakaxkbuqgdghpina.supabase.co",      // ej.: https://xxxx.supabase.co
-  supabaseAnonKey: "sb_publishable_awBVwLiczqU3l7MG5kq1FA_o_kwVRYS",  // clave pública «anon» del proyecto (se puede publicar; la seguridad la dan las reglas RLS)
+  supabaseUrl: "https://rwutecnycvpmfciwxfwo.supabase.co",      // ej.: https://xxxx.supabase.co
+  supabaseAnonKey: "sb_publishable_DOQTW3KJrTvOOBJ8HKe06A_Y1JAVtop",  // clave pública «anon» del proyecto (se puede publicar; la seguridad la dan las reglas RLS)
   payUrl: "https://mpago.la/18ZXJKD",           // link de pago de Mercado Pago
 };
 (() => {
@@ -2764,6 +3050,111 @@ const CUENTA = {
         return data && Array.isArray(data.resultados) ? data : null;
       } catch { return null; }
     };
+    // Mercado Libre: vendedores vinculados y dirección de sus envíos Flex (función «mercadolibre»)
+    let mlOff = false;
+    // cuenta de mensajería (courier Flex): se guarda en este teléfono
+    const mlCourier = () => localStorage.getItem("mlCourier") === "1";
+    $("mlCourierChk").checked = mlCourier();
+    $("mlCourierChk").addEventListener("change", () => localStorage.setItem("mlCourier", $("mlCourierChk").checked ? "1" : "0"));
+    const ml = async (body) => {
+      const { data, error } = await sb.functions.invoke("mercadolibre", { body });
+      if (error) { let st = 0, msg = ""; try { st = error.context.status; msg = (await error.context.json()).error || ""; } catch {} if (st === 404) mlOff = true; throw new Error(msg || "Mercado Libre no respondió"); }
+      return data;
+    };
+    window.envioML = async (id, sender_id) => {
+      if (mlOff) return null;
+      const d = await ml({ accion: "envio", id, sender_id, courier: mlCourier() });
+      // si Mercado Libre rechaza el registro como mensajería, se apaga la opción para no seguir generando errores
+      if (d && d.courier_error && mlCourier()) {
+        localStorage.setItem("mlCourier", "0"); $("mlCourierChk").checked = false;
+        try { toast("Mercado Libre no aceptó registrar el envío como mensajería. Apagué esa opción en Ajustes; probala con 🧪 para ver el motivo.", true); } catch {}
+      }
+      return d && d.encontrado ? d : null;
+    };
+    // cuentas de Mercado Libre vinculadas a este chofer: una fila por cuenta con «Desvincular»
+    async function mlListar() {
+      const box = $("mlList");
+      try {
+        const d = await ml({ accion: "vendedores" }), vs = (d && d.vendedores) || [];
+        box.innerHTML = "";
+        if (!vs.length) { box.textContent = "Todavía no hay cuentas vinculadas."; return; }
+        vs.forEach(v => {
+          const row = document.createElement("div"); row.className = "mlrow";
+          const name = document.createElement("span"); name.textContent = "🟡 " + (v.apodo || v.id);
+          const out = document.createElement("button"); out.type = "button"; out.className = "btn"; out.textContent = "Desvincular";
+          out.addEventListener("click", async () => {
+            if (!confirm("¿Desvincular la cuenta " + (v.apodo || v.id) + "? La app deja de pedir a Mercado Libre la dirección de sus envíos.")) return;
+            out.disabled = true;
+            try { await ml({ accion: "desvincular", ml_user_id: v.id }); $("mlMsg").textContent = "Cuenta " + (v.apodo || v.id) + " desvinculada."; }
+            catch (e) { $("mlMsg").textContent = "No se pudo desvincular: " + (e.message || e); }
+            mlListar();
+          });
+          row.append(name, out); box.append(row);
+        });
+      } catch { box.textContent = ""; }
+    }
+    // vincular otra cuenta: Mercado Libre entra con la cuenta que ya tiene abierta este navegador,
+    // así que el link se abre en una ventana de incógnito (o en otro teléfono) para elegir otra cuenta
+    $("mlOtherBtn").addEventListener("click", async () => {
+      const out = $("mlOtherMsg"); $("mlOtherBtn").disabled = true; out.textContent = "Creando el link…";
+      try {
+        const d = await ml({ accion: "link" });
+        let copied = false; try { await navigator.clipboard.writeText(d.url); copied = true; } catch {}
+        out.innerHTML = "";
+        out.append((copied ? "Link copiado. " : "") + "Para vincular OTRA cuenta:\n1. Abrí una pestaña de incógnito (menú ⋮ del navegador > Nueva pestaña de incógnito).\n2. Pegá el link y entrá con la otra cuenta de Mercado Libre.\n3. Tocá «Permitir». Después volvé acá y tocá Actualizar.\nEl link sirve para una sola cuenta.\n");
+        const go = document.createElement("a"); go.href = d.url; go.className = "btn"; go.textContent = "Abrir acá igual"; go.title = "Usa la cuenta que ya está abierta en este navegador";
+        const upd = document.createElement("button"); upd.type = "button"; upd.className = "btn"; upd.textContent = "🔄 Actualizar lista"; upd.addEventListener("click", mlListar);
+        out.append(go, " ", upd);
+      } catch (e) { out.textContent = "No se pudo crear el link: " + (e.message || e); }
+      finally { $("mlOtherBtn").disabled = false; }
+    });
+    document.addEventListener("visibilitychange", () => { if (!document.hidden && !$("mlCard").hidden) mlListar(); });
+    $("mlLinkBtn").addEventListener("click", async () => {
+      $("mlLinkBtn").disabled = true; $("mlMsg").textContent = "Creando el link…";
+      try {
+        const d = await ml({ accion: "link" });
+        const txt = "Hola! Para que pueda ver la dirección de tus envíos Flex al escanearlos, entrá a este link y tocá «Permitir» (es una sola vez): " + d.url;
+        if (navigator.share) { try { await navigator.share({ text: txt }); $("mlMsg").textContent = "Link listo. Sirve para un solo vendedor."; return; } catch {} }
+        try { await navigator.clipboard.writeText(d.url); } catch {}
+        $("mlMsg").innerHTML = ""; const a = document.createElement("a"); a.href = "https://wa.me/?text=" + encodeURIComponent(txt); a.target = "_blank"; a.rel = "noopener"; a.className = "btn"; a.textContent = "Mandar por WhatsApp";
+        $("mlMsg").append("Link copiado. Sirve para un solo vendedor. ", a);
+      } catch (e) { $("mlMsg").textContent = "No se pudo crear el link: " + (e.message || e); }
+      finally { $("mlLinkBtn").disabled = false; }
+    });
+    // prueba: el chofer conecta su propia cuenta (mismo permiso que un vendedor) y ve qué responde Mercado Libre con un QR
+    $("mlMineBtn").addEventListener("click", async () => {
+      $("mlMineBtn").disabled = true; $("mlTestMsg").textContent = "Abriendo Mercado Libre…";
+      try { const d = await ml({ accion: "link" }); location.href = d.url; }
+      catch (e) { $("mlTestMsg").textContent = "No se pudo abrir: " + (e.message || e); $("mlMineBtn").disabled = false; }
+    });
+    $("mlTestBtn").addEventListener("click", () => { $("mlTestFile").value = ""; $("mlTestFile").click(); });
+    $("mlTestFile").addEventListener("change", async () => {
+      const f = $("mlTestFile").files[0]; if (!f) return;
+      const out = $("mlTestMsg"); out.textContent = "Leyendo el QR…";
+      try {
+        const q = window.leerQRFlex ? await window.leerQRFlex(f) : null;
+        if (!q) { out.textContent = "No encontré un QR en la foto. Probá más cerca y con buena luz."; return; }
+        if (!q.sender_id) { out.textContent = "El QR no es de Mercado Libre Flex (dice: " + q.id + ")."; return; }
+        await mlProbar(q.id, q.sender_id);
+      } catch (e) { out.textContent = "Error: " + (e.message || e); }
+    });
+    // prueba sin etiqueta: el número de envío que muestra la app de Envíos Flex (#4…)
+    $("mlTestNumBtn").addEventListener("click", async () => {
+      const v = prompt("Número de envío (el #… que muestra la app de Envíos Flex):", "");
+      const id = String(v || "").replace(/\D/g, ""); if (!id) return;
+      try { await mlProbar(id, ""); } catch (e) { $("mlTestMsg").textContent = "Error: " + (e.message || e); }
+    });
+    async function mlProbar(id, sender) {
+      const out = $("mlTestMsg");
+      {
+        out.textContent = "Envío " + id + (sender ? " · vendedor " + sender : "") + "\nConsultando a Mercado Libre…";
+        const d = await ml({ accion: "envio", id, sender_id: sender, prueba: true, courier: mlCourier() });
+        const lineas = ((d && d.intentos) || []).map(i => "• " + i.cuenta + ": " + i.estado + (i.mensaje ? " (" + i.mensaje + ")" : ""));
+        if (d && d.encontrado) out.textContent = "✅ ¡Funciona! Mercado Libre devolvió la dirección:\n" + d.address + (d.cp ? " (CP " + d.cp + ")" : "") + (d.receptor ? "\nRecibe: " + d.receptor : "") + "\n\n" + lineas.join("\n");
+        else if (!d || !d.vinculado) out.textContent = "Todavía no hay ninguna cuenta conectada. Tocá «Conectar mi cuenta de Mercado Libre» primero.";
+        else out.textContent = "❌ Mercado Libre no dio la dirección con las cuentas conectadas:\n" + lineas.join("\n") + "\n\n403 = sin permiso para ese envío · 404 = no lo encuentra.";
+      }
+    }
     const err = (e) => {
       const m = String(e && e.message || e);
       if (/invalid login/i.test(m)) return "Correo o contraseña incorrectos.";
@@ -2784,6 +3175,7 @@ const CUENTA = {
       $("planInfo").textContent = premium ? "⭐ Plan pago: las direcciones se buscan con TomTom." : "Plan gratis: las direcciones se buscan con mapas gratuitos. Pagá la suscripción para buscar con TomTom, más preciso.";
       document.querySelectorAll("#accountCard .payLink").forEach(a => { a.hidden = premium || !CUENTA.payUrl; });
       $("planCheck").hidden = premium;
+      $("mlCard").hidden = false; mlListar();
     }
     async function logout() { await sb.auth.signOut(); location.reload(); }
     $("authOut").addEventListener("click", logout);

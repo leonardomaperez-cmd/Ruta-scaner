@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacidad y términos · Ruta Escáner</title>
+<meta name="description" content="Política de privacidad y términos y condiciones de Ruta Escáner.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Hanken+Grotesk:wght@400;600;700&display=swap">
+<style>
+:root {
+  --bg: #f2f3ff; --surface: #ffffff; --ink: #131b2e; --muted: #3d4a42; --line: #dae2fd;
+  --accent: #006948; --mark: #fff1b8; --mark-ink: #5a4500;
+  --display: "Space Grotesk", system-ui, sans-serif; --body: "Hanken Grotesk", system-ui, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg: #0f1626; --surface: #1b2335; --ink: #eef0ff; --muted: #aab4c8; --line: #2c3650; --accent: #68dba9; --mark: #4a3d10; --mark-ink: #ffe08a; color-scheme: dark; }
+}
+:root[data-theme="dark"] { --bg: #0f1626; --surface: #1b2335; --ink: #eef0ff; --muted: #aab4c8; --line: #2c3650; --accent: #68dba9; --mark: #4a3d10; --mark-ink: #ffe08a; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 var(--body); }
+main { max-width: 720px; margin: 0 auto; padding: 24px 16px 64px; }
+h1, h2 { font-family: var(--display); line-height: 1.2; }
+h1 { font-size: 1.7rem; margin: 8px 0 4px; }
+h2 { font-size: 1.3rem; margin: 40px 0 12px; padding-top: 8px; border-top: 1px solid var(--line); }
+.sub { color: var(--muted); margin: 0 0 16px; }
+nav { display: flex; gap: 10px; flex-wrap: wrap; margin: 16px 0 8px; }
+nav a, .back { color: var(--accent); font-weight: 600; text-decoration: none; }
+.back { display: inline-block; margin-bottom: 8px; }
+.ph { background: var(--mark); color: var(--mark-ink); border-radius: 4px; padding: 0 4px; font-weight: 600; }
+.tbl { overflow-x: auto; margin: 8px 0 16px; }
+table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 10px; overflow: hidden; font-size: .93rem; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-family: var(--display); font-weight: 600; }
+tr:last-child td { border-bottom: 0; }
+ol li { margin-bottom: 10px; }
+blockquote { margin: 0; padding: 10px 14px; background: var(--surface); border-left: 3px solid var(--accent); border-radius: 6px; }
+footer { margin-top: 40px; color: var(--muted); font-size: .9rem; }
+</style>
+</head>
+<body>
+<main>
+<a class="back" href="./">← Volver a la app</a>
+<h1>Privacidad y términos</h1>
+<p class="sub">Ruta Escáner · Vigente desde <span class="ph">[FECHA]</span></p>
+<nav><a href="#privacidad">Política de privacidad</a><a href="#terminos">Términos y condiciones</a></nav>
+
+<h2 id="privacidad">Política de privacidad</h2>
+<p><strong>Responsable.</strong> Ruta Escáner es un servicio de <span class="ph">[NOMBRE O RAZÓN SOCIAL]</span>, CUIT 20-42427427-6, con domicilio en <span class="ph">[DOMICILIO]</span>. Para cualquier consulta sobre tus datos escribí a <span class="ph">[CORREO DE CONTACTO]</span>.</p>
+
+<p><strong>Qué datos tratamos y dónde quedan.</strong></p>
+<div class="tbl"><table>
+<thead><tr><th>Dato</th><th>De quién</th><th>Dónde se guarda</th><th>Para qué</th></tr></thead>
+<tbody>
+<tr><td>Correo y contraseña</td><td>Chofer</td><td>Servidores de Supabase (la contraseña cifrada)</td><td>Crear la cuenta y entrar</td></tr>
+<tr><td>Estado de la cuenta (activa o no)</td><td>Chofer</td><td>Supabase</td><td>Saber si la suscripción está paga</td></tr>
+<tr><td>Datos del pago</td><td>Chofer</td><td>Mercado Pago (nosotros no vemos la tarjeta)</td><td>Cobrar la suscripción</td></tr>
+<tr><td>Direcciones, referencias, teléfonos y notas de voz de los destinatarios</td><td>Destinatarios de los paquetes</td><td>Solo en el teléfono del chofer</td><td>Armar y recorrer la ruta de entregas</td></tr>
+<tr><td>Fotos de etiquetas y paquetes</td><td>Destinatarios</td><td>Solo en el teléfono del chofer; la lectura de la etiqueta se hace en el mismo teléfono</td><td>Cargar la dirección e identificar el paquete</td></tr>
+<tr><td>Ubicación del teléfono</td><td>Chofer</td><td>Solo en el teléfono</td><td>Mostrar dónde estás, avisar cuando te acercás a una parada y ordenar la ruta</td></tr>
+<tr><td>Cantidad de búsquedas por día</td><td>Servicio en general, sin datos personales</td><td>Supabase</td><td>Controlar los cupos de los buscadores de direcciones</td></tr>
+</tbody>
+</table></div>
+
+<p><strong>A quién se envía información.</strong> Para buscar una dirección o calcular la ruta, el texto de la dirección y las coordenadas se envían a proveedores de mapas: TomTom, HERE, Geoapify, LocationIQ, OpenStreetMap (Photon, Nominatim, Overpass), OSRM y Valhalla. No se envían nombres ni teléfonos. Supabase y algunos de estos proveedores tienen servidores fuera de Argentina, por lo que puede haber transferencia internacional de datos. Al usar WhatsApp o Llamar, la app solo abre esas aplicaciones con el número cargado.</p>
+<p><strong>Qué no hacemos.</strong> No vendemos datos. No usamos los datos de los destinatarios para publicidad. No subimos las fotos de las etiquetas a ningún servidor.</p>
+<p><strong>Responsabilidad del chofer.</strong> El chofer carga datos de terceros (los destinatarios) y debe usarlos solo para realizar la entrega y borrarlos cuando ya no los necesite. La app permite borrar paradas y la lista completa.</p>
+<p><strong>Cuánto tiempo se guardan.</strong> Los datos del teléfono quedan hasta que el chofer los borra o desinstala la app. La cuenta se guarda mientras esté activa; si pedís la baja, la borramos dentro de los 30 días, salvo lo que la ley obligue a conservar (por ejemplo, facturación).</p>
+<p><strong>Tus derechos.</strong> Podés pedir acceso, rectificación, actualización o supresión de tus datos escribiendo a <span class="ph">[CORREO DE CONTACTO]</span>. El acceso es gratuito cada seis meses, salvo interés legítimo (art. 14 inc. 3, Ley 25.326).</p>
+<blockquote>La AGENCIA DE ACCESO A LA INFORMACIÓN PÚBLICA, en su carácter de Órgano de Control de la Ley N° 25.326, tiene la atribución de atender las denuncias y reclamos que interpongan quienes resulten afectados en sus derechos por incumplimiento de las normas vigentes en materia de protección de datos personales.</blockquote>
+<p><strong>Cambios.</strong> Si cambiamos esta política, te avisamos en la app antes de que rija.</p>
+
+<h2 id="terminos">Términos y condiciones</h2>
+<ol>
+<li><strong>Qué es Ruta Escáner.</strong> Es una herramienta para choferes de reparto: carga direcciones (a mano o leyendo la etiqueta), las ubica en el mapa y sugiere un orden de visita. No es un servicio de Mercado Libre ni está asociado a él; «compatible con etiquetas Flex» solo indica que puede leer ese formato.</li>
+<li><strong>Cuenta.</strong> Para usarla necesitás una cuenta con tu correo. Sos responsable de cuidar tu contraseña y de lo que se haga con tu cuenta. Una cuenta es para un solo chofer.</li>
+<li><strong>Plan gratis y plan pago.</strong> Cualquier cuenta registrada puede usar la app sin costo con los buscadores de direcciones gratuitos. El plan pago agrega el buscador de direcciones premium.</li>
+<li><strong>Precio y pago.</strong> El plan pago cuesta <span class="ph">[PRECIO]</span> por mes y se paga con Mercado Pago. Emitimos factura por cada pago. Si cambiamos el precio te avisamos con 30 días de anticipación.</li>
+<li><strong>Arrepentimiento.</strong> Podés arrepentirte de la contratación dentro de los 10 días corridos desde que pagaste, sin dar motivos y sin costo, escribiendo a <span class="ph">[CORREO DE CONTACTO]</span>. Te devolvemos lo pagado por el mismo medio (art. 34, Ley 24.240).</li>
+<li><strong>Baja.</strong> Podés dar de baja la suscripción cuando quieras escribiendo a <span class="ph">[CORREO DE CONTACTO]</span>. Te confirmamos la baja por correo.</li>
+<li><strong>Uso correcto.</strong> Solo podés usar los datos de los destinatarios para hacer la entrega. No podés usar la app para enviar mensajes no pedidos, revender el servicio ni intentar saltear los cupos.</li>
+<li><strong>Funcionamiento.</strong> Las direcciones, mapas y rutas vienen de servicios de terceros y pueden tener errores o estar caídos. La ruta es una sugerencia: respetá siempre las señales de tránsito y no manipules el teléfono mientras manejás. No respondemos por demoras, entregas fallidas, multas ni accidentes derivados de seguir la ruta.</li>
+<li><strong>Disponibilidad.</strong> Hacemos lo posible para que la app funcione siempre, pero puede haber cortes por mantenimiento o fallas de proveedores. Si un corte dura más de 3 días seguidos, te compensamos con los días perdidos.</li>
+<li><strong>Suspensión.</strong> Podemos suspender una cuenta que incumpla estos términos, avisándote el motivo.</li>
+<li><strong>Datos.</strong> El tratamiento de datos personales se rige por la Política de privacidad de arriba.</li>
+<li><strong>Créditos de mapas.</strong> Datos de mapas © colaboradores de OpenStreetMap y, según el caso, © TomTom, © HERE, Geoapify y LocationIQ.</li>
+<li><strong>Ley y jurisdicción.</strong> Rigen las leyes de la República Argentina. Para usuarios consumidores, es competente el tribunal de su domicilio.</li>
+<li><strong>Contacto.</strong> <span class="ph">[CORREO DE CONTACTO]</span></li>
+</ol>
+<footer>Ruta Escáner · <a href="./">Volver a la app</a></footer>
+</main>
+</body>
+</html>
