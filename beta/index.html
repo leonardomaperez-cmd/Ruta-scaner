@@ -867,6 +867,15 @@ a.btn { color: var(--foreground); } a.btn-primary { color: var(--primary-foregro
       <button class="btn" id="planCheck" type="button" hidden>Ya pagué, revisar</button>
       <button class="btn" id="logoutBtn" type="button" hidden>Cerrar sesión</button>
     </div>
+    <div class="card" id="segVivoCard">
+      <strong>📍 Seguimiento en vivo</strong>
+      <span class="note">Al tocar 💬 WhatsApp, el mensaje lleva un link para que el cliente vea en el mapa dónde estás, en movimiento. El link se corta solo cuando marcás la parada como entregada.</span>
+      <label class="check"><input id="segVivoChk" type="checkbox" disabled> Mandar el link de seguimiento en el WhatsApp</label>
+      <span class="note" id="segVivoPlan">Disponible con la cuenta paga (entrá con tu cuenta).</span>
+      <span class="note" id="segVivoInfo"></span>
+      <button class="btn" id="segVivoStop" type="button" hidden>⏹ Dejar de compartir mi ubicación ahora</button>
+      <span class="note">Con la página web, si bloqueás el teléfono deja de mandarse la ubicación; en la app de Android sigue.</span>
+    </div>
     <div class="card" id="mlCard" hidden>
       <strong>Mercado Libre Flex</strong>
       <span class="note">Mandale este link a cada vendedor. Cuando lo abra y toque «Permitir», al escanear el QR de sus envíos Flex la dirección sale directo de Mercado Libre.</span>
@@ -917,7 +926,7 @@ a.btn { color: var(--foreground); } a.btn-primary { color: var(--primary-foregro
   let items = store.get("items", []);
   if (items.some(it => it.review)) { items = items.filter(it => !it.review || it.address); items.forEach(it => { delete it.review; delete it.alt; }); store.set("items", items); }
   let route = store.get("route", null);
-  const save = () => { store.set("items", items); store.set("route", route); };
+  const save = () => { store.set("items", items); store.set("route", route); segSync(); };
   const nextNum = () => items.reduce((m, it) => Math.max(m, it.num), 0) + 1;
   const byNum = (n) => items.find(it => it.num === n);
 
@@ -1008,10 +1017,12 @@ a.btn { color: var(--foreground); } a.btn-primary { color: var(--primary-foregro
     } else { meMarker.setLatLng(ll); meCircle.setLatLng(ll).setRadius(pos.coords.accuracy); }
     // la flecha apunta hacia donde vas (si el teléfono da el rumbo)
     const hd = pos.coords.heading, el = meMarker.getElement && meMarker.getElement();
+    segHd = typeof hd === "number" && !isNaN(hd) ? Math.round(hd) : null;
     if (el && typeof hd === "number" && !isNaN(hd)) { const d = el.querySelector(".me-dot"); if (d) d.style.setProperty("--hd", (hd - 63) + "deg"); }
     if (meFollow) { map.setView(ll, Math.max(map.getZoom(), 15)); meFollow = false; }
     checkArrival({ lat: ll[0], lng: ll[1] });
     if (SEG_ON) segAutoCheck({ lat: ll[0], lng: ll[1] });
+    segPub(false);
   }
   function onMeErr(e) {
     locBtn.classList.remove("on");
@@ -1084,7 +1095,115 @@ a.btn { color: var(--foreground); } a.btn-primary { color: var(--primary-foregro
     if (d.length === 12) for (const i of [2, 3, 4]) if (d.substr(i, 2) === "15") { d = d.slice(0, i) + d.slice(i + 2); break; }
     return "549" + d;
   }
-  const waLink = (it, llegando) => "https://wa.me/" + waNum(it.tel) + "?text=" + encodeURIComponent("Hola, soy el repartidor. " + (llegando ? "Estoy llegando" : "Estoy en camino") + " con tu paquete " + code(it.num) + (it.address ? " para " + it.address : "") + ".");
+  // ---------- seguimiento en vivo: el cliente abre el link del WhatsApp y ve al auto acercándose ----------
+  // Cada parada tiene un token aleatorio (seguir.html#t=…). Recién cuando se toca 💬 WhatsApp se activa en Supabase.
+  // La posición viaja cada 3 s por un canal secreto de Supabase Realtime (no se guarda) y cada 15 s se guarda la última,
+  // para que el que abre el link vea el auto enseguida. Al entregar, borrar la parada o armar ruta nueva, el link se corta
+  // y el canal cambia, así el que ya recibió no sigue viendo al chofer. Se necesita supabase-seguimiento.sql y plan pago.
+  var segAct = store.get("segActivos", []), segFin = store.get("segFin", []), segCanal = store.get("segCanal", ""), segHd = null;
+  var segCh = null, segChName = "", segLastPub = 0, segLastDb = 0;
+  const segRnd = (n) => { const a = new Uint8Array(n); crypto.getRandomValues(a); return btoa(String.fromCharCode(...a)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
+  if (!segCanal) { segCanal = segRnd(18); store.set("segCanal", segCanal); }
+  const segOn = () => !!(window.segListo && window.sbClient) && store.get("segVivo", true);
+  const segBase = () => /^https?:$/.test(location.protocol) && !/^(localhost|127\.|10\.|192\.168\.)/.test(location.hostname)
+    ? new URL("../seguir.html", location.href).href : (typeof CUENTA !== "undefined" && CUENTA.seguirUrl) || "";
+  function segLink(it) {
+    if (!segOn() || !segBase()) return "";
+    if (!it.seg) { it.seg = segRnd(18); store.set("items", items); }
+    return segBase() + "#t=" + it.seg;
+  }
+  async function segRegistrar(it) {
+    if (!segOn() || !it || !it.seg || segAct.some(a => a.t === it.seg)) return;
+    const t = it.seg; segAct.push({ t, num: it.num }); store.set("segActivos", segAct);
+    const fila = { token: t, canal: segCanal, etiqueta: code(it.num), dest_lat: typeof it.lat === "number" ? it.lat : null, dest_lng: typeof it.lng === "number" ? it.lng : null };
+    if (meLast) Object.assign(fila, { lat: meLast[0], lng: meLast[1], rumbo: segHd, actualizado: new Date().toISOString() });
+    const { error } = await window.sbClient.from("seguimientos").insert(fila);
+    if (error && !/duplicate|23505/i.test(error.message + error.code)) {
+      segAct = segAct.filter(a => a.t !== t); store.set("segActivos", segAct);
+      toast("No se pudo activar el seguimiento en vivo (" + (error.message || "error") + ")", true); return;
+    }
+    if (meWatch == null) startMe(false); // hace falta el GPS para mandar la posición
+    segPub(true); segInfo();
+  }
+  // un toque en cualquier botón de WhatsApp con link de seguimiento lo activa
+  document.addEventListener("click", (e) => {
+    const a = e.target.closest && e.target.closest('a[href*="wa.me/"]'); if (!a) return;
+    let h = a.href; try { h = decodeURIComponent(h); } catch {}
+    const m = h.match(/seguir\.html#t=([\w-]{20,})/), it = m && items.find(x => x.seg === m[1]);
+    if (it) segRegistrar(it);
+  }, true);
+  function segChannel() {
+    if (segCh && segChName === segCanal) return segCh;
+    if (segCh) try { window.sbClient.removeChannel(segCh); } catch {}
+    segChName = segCanal;
+    segCh = window.sbClient.channel("seg-" + segCanal, { config: { broadcast: { self: false } } });
+    segCh.subscribe();
+    return segCh;
+  }
+  function segPub(force) {
+    if (!window.sbClient) return;
+    if (segFin.length) segCerrar();
+    if (!segAct.length) { if (segCh) { try { window.sbClient.removeChannel(segCh); } catch {} segCh = null; } return; }
+    if (!meLast) return;
+    const now = Date.now(); if (!force && now - segLastPub < 3000) return;
+    segLastPub = now;
+    const lat = +meLast[0].toFixed(6), lng = +meLast[1].toFixed(6);
+    try { segChannel().send({ type: "broadcast", event: "pos", payload: { lat, lng, hd: segHd, t: now } }); } catch {}
+    if (force || now - segLastDb > 15000) {
+      segLastDb = now;
+      window.sbClient.from("seguimientos").update({ lat, lng, rumbo: segHd, actualizado: new Date(now).toISOString() })
+        .in("token", segAct.map(a => a.t)).eq("terminado", false).then(() => {}, () => {});
+    }
+  }
+  setInterval(() => segPub(false), 5000); // aunque el auto esté quieto, el cliente sabe que el chofer sigue conectado
+  // cortar los links que ya no corresponden (entregada, borrada, ruta nueva) y cambiar el canal
+  function segSync() {
+    if (!segAct || !segAct.length) return;
+    const fin = segAct.filter(a => { const it = items.find(x => x.seg === a.t); return !it || it.done; });
+    if (!fin.length) return;
+    segCortar(fin.map(a => a.t));
+  }
+  function segCortar(tokens) {
+    segAct = segAct.filter(a => !tokens.includes(a.t)); store.set("segActivos", segAct);
+    items.forEach(it => { if (tokens.includes(it.seg)) delete it.seg; }); store.set("items", items);
+    segFin = segFin.concat(tokens); store.set("segFin", segFin);
+    segCanal = segRnd(18); store.set("segCanal", segCanal);
+    segCerrar(); segInfo();
+  }
+  let segCerrando = false;
+  async function segCerrar() {
+    if (segCerrando || !window.sbClient) return; segCerrando = true;
+    try {
+      if (segFin.length) {
+        const lista = segFin.slice();
+        const { error } = await window.sbClient.from("seguimientos").update({ terminado: true }).in("token", lista);
+        if (!error) { segFin = segFin.filter(t => !lista.includes(t)); store.set("segFin", segFin); }
+      }
+      if (segAct.length) {
+        const { error } = await window.sbClient.from("seguimientos").update({ canal: segCanal }).in("token", segAct.map(a => a.t));
+        if (!error) segPub(true);
+      }
+    } finally { segCerrando = false; }
+  }
+  function segInfo() {
+    const el = $("segVivoInfo"); if (!el) return;
+    el.textContent = segAct.length ? "📍 Compartiendo tu ubicación con " + segAct.length + (segAct.length === 1 ? " cliente." : " clientes.") : "Ahora no estás compartiendo tu ubicación con nadie.";
+    $("segVivoStop").hidden = !segAct.length;
+  }
+  window.segListoCambio = (ok) => {
+    window.segListo = ok;
+    $("segVivoChk").disabled = !ok; $("segVivoChk").checked = ok && store.get("segVivo", true);
+    $("segVivoPlan").hidden = ok; segInfo();
+    if (ok) { if (segAct.length && meWatch == null) startMe(false); segPub(true); }
+    refresh(false);
+  };
+  $("segVivoChk").addEventListener("change", (e) => {
+    store.set("segVivo", e.target.checked);
+    if (!e.target.checked && segAct.length) segCortar(segAct.map(a => a.t));
+    refresh(false);
+  });
+  $("segVivoStop").addEventListener("click", () => { segCortar(segAct.map(a => a.t)); toast("Listo, dejaste de compartir tu ubicación"); });
+  const waLink = (it, llegando) => { const sl = segLink(it); return "https://wa.me/" + waNum(it.tel) + "?text=" + encodeURIComponent("Hola, soy el repartidor. " + (llegando ? "Estoy llegando" : "Estoy en camino") + " con tu paquete " + code(it.num) + (it.address ? " para " + it.address : "") + "." + (sl ? "\nMirá en vivo dónde estoy: " + sl : "")); };
   // WhatsApp no deja adjuntar una foto por link: se comparte con el menú del teléfono y el chofer elige el chat del cliente
   // (si antes le mandó el mensaje con 💬 WhatsApp, ese chat aparece primero).
   async function waFoto(it) {
@@ -2394,7 +2513,7 @@ a.btn { color: var(--foreground); } a.btn-primary { color: var(--primary-foregro
     if (has(/whats|guasap|wasap|wassap|mensaje|avis/)) {
       if (!it || !it.tel) { speak("Esta parada no tiene teléfono cargado."); return; }
       speak("Abro WhatsApp. Tocá enviar.");
-      const msg = decodeURIComponent(waLink(it, true).split("?text=")[1] || "");
+      const msg = decodeURIComponent(waLink(it, true).split("?text=")[1] || ""); segRegistrar(it);
       setTimeout(() => { location.href = "whatsapp://send?phone=" + waNum(it.tel) + "&text=" + encodeURIComponent(msg); }, 900); return;
     }
     if (has(/llam/)) {
@@ -3419,6 +3538,7 @@ const CUENTA = {
   supabaseUrl: "https://rwutecnycvpmfciwxfwo.supabase.co",      // ej.: https://xxxx.supabase.co
   supabaseAnonKey: "sb_publishable_DOQTW3KJrTvOOBJ8HKe06A_Y1JAVtop",  // clave pública «anon» del proyecto (se puede publicar; la seguridad la dan las reglas RLS)
   payUrl: "https://mpago.la/18ZXJKD",           // link de pago de Mercado Pago
+  seguirUrl: "https://strong-boba-063940.netlify.app/seguir.html", // página pública del seguimiento en vivo (la usa la app de Android)
 };
 (() => {
   const $ = (id) => document.getElementById(id);
@@ -3605,6 +3725,7 @@ const CUENTA = {
       document.querySelectorAll("#accountCard .payLink").forEach(a => { a.hidden = premium || !CUENTA.payUrl; });
       $("planCheck").hidden = premium;
       $("mlCard").hidden = false; mlListar();
+      if (window.segListoCambio) window.segListoCambio(premium);
     }
     async function logout() { await sb.auth.signOut(); location.reload(); }
     $("authOut").addEventListener("click", logout);
