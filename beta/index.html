@@ -123,6 +123,8 @@ body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--body); ov
 #zonaIn[hidden] { display: none; }
 #zonaBar { position: fixed; left: 12px; right: 12px; top: calc(56px + var(--top)); z-index: 970; background: #1b2335; border-left: 5px solid #ffb74d; color: #fff; border-radius: 16px; padding: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.4); display: grid; gap: 8px; max-width: 520px; margin: 0 auto; font: 600 .92rem var(--body); }
 #zonaBar[hidden] { display: none; }
+body.zfrozen .leaflet-gl-layer, body.zfrozen .maplibregl-canvas { pointer-events: none !important; }
+body.zfrozen #map { touch-action: none; }
 body.zfrozen .fabs, body.zfrozen .map-ctl, body.zfrozen .revbub, body.zfrozen .vozbub, body.zfrozen .xbub { display: none !important; }
 #zonaBar .row { display: flex; gap: 8px; flex-wrap: nowrap; }
 #zonaBar .row .btn { flex: 1; min-height: 40px; padding: 6px; }
@@ -383,7 +385,7 @@ input:disabled { opacity: .45; }
   <div class="row"><button class="btn btn-primary" id="finishNew" type="button">Armar nueva ruta</button><button class="btn" id="finishLater" type="button">Todavía no</button></div>
 </div>
 <div id="zonaBar" hidden>
-  <div id="zonaBarTxt">El mapa quedó quieto. Tocá puntos alrededor de las direcciones para marcar la zona (mínimo 3)</div>
+  <div id="zonaBarTxt">El mapa quedó quieto. Tocá puntos alrededor de las direcciones para marcar la zona (mínimo 3). Después podés arrastrarlos.</div>
   <div class="row"><button class="btn" id="zonaBarUndo" type="button">↩ Deshacer</button><button class="btn" id="zonaBarNo" type="button">Cancelar</button><button class="btn btn-primary" id="zonaBarOk" type="button">Listo</button></div>
 </div>
 <div id="zonaIn" role="alert" hidden>
@@ -2844,7 +2846,7 @@ input:disabled { opacity: .45; }
     zonas.forEach((z, i) => {
       const its = z.map(byNum).filter(it => it && typeof it.lat === "number"); if (!its.length) return;
       const col = ZCOL[i % ZCOL.length], pts = its.map(it => [it.lat, it.lng]); all.push(...pts);
-      const h = hull(pts);
+      const h = z.poly && z.poly.length >= 3 ? z.poly : hull(pts);
       if (h.length >= 3) L.polygon(h, { color: col, weight: 3, fillOpacity: .15, interactive: false }).addTo(zoneLayer);
       // tocar una parada de una zona permite pasarla a otra zona (o sacarla de las zonas)
       its.forEach(it => L.circleMarker([it.lat, it.lng], { pane: "zonaPane", radius: 17, color: col, weight: 4, fillColor: col, fillOpacity: .01 })
@@ -2859,7 +2861,7 @@ input:disabled { opacity: .45; }
     const it = byNum(num), h = document.createElement("b"); h.textContent = code(num) + " · Zona " + (from + 1); d.append(h);
     if (it) { const a = document.createElement("div"); a.className = "note"; a.textContent = it.address; d.append(a); }
     const mover = (to) => {
-      map.closePopup(); zonas[from] = zonas[from].filter(n => n !== num);
+      map.closePopup(); const pf = zonas[from].poly; zonas[from] = zonas[from].filter(n => n !== num); zonas[from].poly = pf;
       if (to === "new") zonas.push([num]); else if (to !== null) zonas[to].push(num);
       zonas = zonas.filter(z => z.length); if (!zonas.length) zonas = null;
       renderZonas(); drawZonas(false); toast(code(num) + (to === null ? " quedó fuera de las zonas" : " movida"));
@@ -2925,7 +2927,9 @@ input:disabled { opacity: .45; }
         save(); refresh(false); renderZonas(); drawZonas(false);
         toast("Zona quitada. Tocá «Optimizar ruta» para reordenar lo que te queda");
       };
-      b.append(ver, pas, quitar); row.append(dot, t, b); box.append(row);
+      const borde = document.createElement("button"); borde.className = "mini"; borde.type = "button"; borde.textContent = "✏️ Mover borde";
+      borde.onclick = () => { const pts = its.filter(it => typeof it.lat === "number").map(it => [it.lat, it.lng]); empezarDibujo(z.poly && z.poly.length >= 3 ? z.poly : hull(pts), i); };
+      b.append(ver, borde, pas, quitar); row.append(dot, t, b); box.append(row);
     });
   }
   const b64u = (u8) => { let s = ""; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
@@ -2975,7 +2979,7 @@ input:disabled { opacity: .45; }
     if (dibujo.length >= 3) shape = L.polygon(dibujo, { color: "#ffb74d", weight: 3, dashArray: "6 6", fillOpacity: .18, interactive: false }).addTo(drawLayer);
     else if (dibujo.length === 2) shape = L.polyline(dibujo, { color: "#ffb74d", weight: 3, dashArray: "6 6", interactive: false }).addTo(drawLayer);
     // los puntos marcados se pueden arrastrar para ajustar el borde
-    const vIcon = L.divIcon({ className: "", html: '<div style="width:22px;height:22px;border-radius:50%;background:#ffb74d;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div>', iconSize: [28, 28], iconAnchor: [14, 14] });
+    const vIcon = L.divIcon({ className: "", html: '<div style="width:48px;height:48px;display:grid;place-items:center"><div style="width:24px;height:24px;border-radius:50%;background:#ffb74d;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)"></div></div>', iconSize: [48, 48], iconAnchor: [24, 24] });
     dibujo.forEach((p, i) => L.marker(p, { icon: vIcon, draggable: true, autoPan: false })
       .on("drag", (e) => { const ll = e.target.getLatLng(); dibujo[i] = [ll.lat, ll.lng]; if (shape) shape.setLatLngs(dibujo); contarDibujo(); })
       .on("dragend", pintarDibujo).addTo(drawLayer));
@@ -2984,25 +2988,31 @@ input:disabled { opacity: .45; }
   // mientras se marca, el mapa queda congelado (sin arrastrar ni zoom) para que cada toque sea un punto
   const MOV = ["dragging", "touchZoom", "doubleClickZoom", "scrollWheelZoom", "boxZoom", "keyboard"];
   const congelar = (on) => { MOV.forEach(h => map[h] && map[h][on ? "disable" : "enable"]()); document.body.classList.toggle("zfrozen", on); };
-  const finDibujo = () => { dibujo = null; pintarDibujo(); $("zonaBar").hidden = true; map.getContainer().style.cursor = ""; congelar(false); };
-  function empezarDibujo() {
-    closeSheets(); dibujo = [];
-    const pts = items.filter(it => !it.done && !it.review && typeof it.lat === "number").map(it => [it.lat, it.lng]);
+  const finDibujo = () => { dibujo = null; editIdx = -1; pintarDibujo(); $("zonaBar").hidden = true; map.getContainer().style.cursor = ""; congelar(false); };
+  let editIdx = -1; // zona cuyo borde se está moviendo (-1 = zona nueva)
+  function empezarDibujo(poly, idx) {
+    closeSheets(); editIdx = Array.isArray(poly) && typeof idx === "number" ? idx : -1;
+    dibujo = editIdx >= 0 ? poly.map(p => p.slice()) : [];
+    const pts = editIdx >= 0 ? dibujo.slice() : items.filter(it => !it.done && !it.review && typeof it.lat === "number").map(it => [it.lat, it.lng]);
     if (pts.length) map.fitBounds(pts, { padding: [70, 40], maxZoom: 16, animate: false });
     congelar(true); pintarDibujo(); $("zonaBar").hidden = false; map.getContainer().style.cursor = "crosshair";
   }
   map.on("click", (e) => { if (!dibujo) return; dibujo.push([e.latlng.lat, e.latlng.lng]); pintarDibujo(); });
-  $("zonaDraw").addEventListener("click", empezarDibujo);
+  $("zonaDraw").addEventListener("click", () => empezarDibujo());
   $("zonaBarUndo").addEventListener("click", () => { if (dibujo && dibujo.length) { dibujo.pop(); pintarDibujo(); } });
   $("zonaBarNo").addEventListener("click", () => { finDibujo(); showTab("p-stops"); if (zonas) { $("zonaBox").hidden = false; renderZonas(); } });
   $("zonaBarOk").addEventListener("click", () => {
     const its = dibujo ? dentroDe(dibujo) : [];
     if (!its.length) { toast(dibujo && dibujo.length >= 3 ? "No quedó ninguna parada pendiente adentro" : "Marcá al menos 3 puntos", true); return; }
-    const nums = new Set(its.map(it => it.num));
-    zonas = (zonas || []).map(z => z.filter(n => !nums.has(n))).filter(z => z.length); // una parada va en una sola zona
-    zonas.push(its.map(it => it.num));
+    const nums = new Set(its.map(it => it.num)), poly = dibujo.map(p => p.slice()), old = zonas && editIdx >= 0 ? zonas[editIdx] : null;
+    const nueva = its.map(it => it.num); nueva.poly = poly;
+    // una parada va en una sola zona: se saca de las demás (conservando sus bordes)
+    zonas = (zonas || []).map(z => { if (z === old) return z; const f = z.filter(n => !nums.has(n)); f.poly = z.poly; return f; });
+    let pos;
+    if (old) { pos = zonas.indexOf(old); zonas[pos] = nueva; } else { zonas.push(nueva); pos = zonas.length - 1; }
+    zonas = zonas.filter(z => z.length); pos = zonas.indexOf(nueva);
     finDibujo(); showTab("p-stops"); $("zonaMax").value = store.get("zonaMax", 15); $("zonaBox").hidden = false;
-    renderZonas(); drawZonas(false); toast("Zona " + zonas.length + " marcada: " + its.length + " paradas");
+    renderZonas(); drawZonas(false); toast("Zona " + (pos + 1) + (old ? " actualizada: " : " marcada: ") + its.length + " paradas");
   });
   // al abrir un link de zona: se guarda, se limpia la dirección y se pregunta (después de entrar a la cuenta)
   { const m = location.hash.match(/[#&]zona=([^&]+)/); if (m) { store.set("zonaRecibida", m[1]); history.replaceState(null, "", location.pathname + location.search); } }
