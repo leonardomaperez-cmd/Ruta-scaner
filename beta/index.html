@@ -385,7 +385,7 @@ input:disabled { opacity: .45; }
   <div class="row"><button class="btn btn-primary" id="finishNew" type="button">Armar nueva ruta</button><button class="btn" id="finishLater" type="button">Todavía no</button></div>
 </div>
 <div id="zonaBar" hidden>
-  <div id="zonaBarTxt">El mapa quedó quieto. Tocá puntos alrededor de las direcciones para marcar la zona (mínimo 3). Después podés arrastrarlos.</div>
+  <div id="zonaBarTxt">El mapa quedó quieto. Tocá de 3 a 6 puntos alrededor de las direcciones. Después podés arrastrarlos.</div>
   <div class="row"><button class="btn" id="zonaBarUndo" type="button">↩ Deshacer</button><button class="btn" id="zonaBarNo" type="button">Cancelar</button><button class="btn btn-primary" id="zonaBarOk" type="button">Listo</button><button class="btn btn-primary" id="zonaBarShare" type="button">📤 Compartir</button></div>
 </div>
 <div id="zonaIn" role="alert" hidden>
@@ -2968,8 +2968,8 @@ input:disabled { opacity: .45; }
   const dentroDe = (poly) => poly.length < 3 ? [] : orderedItems().filter(it => !it.done && !it.review && typeof it.lat === "number" && adentro([it.lat, it.lng], poly));
   function contarDibujo() {
     const its = dentroDe(dibujo);
-    $("zonaBarTxt").textContent = dibujo.length < 3 ? "El mapa quedó quieto. Tocá puntos alrededor de las direcciones para marcar la zona (" + dibujo.length + " de mínimo 3)"
-      : "Adentro: " + its.length + " parada" + (its.length === 1 ? "" : "s") + " · " + its.reduce((n, it) => n + pq(it), 0) + " paquetes. Podés arrastrar los puntos para ajustar. Tocá Listo.";
+    $("zonaBarTxt").textContent = dibujo.length < 3 ? "El mapa quedó quieto. Tocá de 3 a 6 puntos alrededor de las direcciones (" + dibujo.length + " marcados)"
+      : "Adentro: " + its.length + " parada" + (its.length === 1 ? "" : "s") + " · " + its.reduce((n, it) => n + pq(it), 0) + " paquetes. Puntos: " + dibujo.length + " de 6. Podés arrastrarlos para ajustar.";
   }
   // ordena los puntos alrededor del centro: así el borde queda como un "círculo" y nunca se cruza
   function ordenarDibujo() {
@@ -3001,7 +3001,8 @@ input:disabled { opacity: .45; }
     if (pts.length) map.fitBounds(pts, { padding: [70, 40], maxZoom: 16, animate: false });
     congelar(true); pintarDibujo(); $("zonaBar").hidden = false; map.getContainer().style.cursor = "crosshair";
   }
-  map.on("click", (e) => { if (!dibujo) return; dibujo.push([e.latlng.lat, e.latlng.lng]); pintarDibujo(); });
+  const MAX_PUNTOS = 6;
+  map.on("click", (e) => { if (!dibujo) return; if (dibujo.length >= MAX_PUNTOS) { toast("Máximo " + MAX_PUNTOS + " puntos. Arrastralos para ajustar o tocá Deshacer"); return; } dibujo.push([e.latlng.lat, e.latlng.lng]); pintarDibujo(); });
   $("zonaDraw").addEventListener("click", () => empezarDibujo());
   $("zonaBarUndo").addEventListener("click", () => { if (dibujo && dibujo.length) { dibujo.pop(); pintarDibujo(); } });
   $("zonaBarNo").addEventListener("click", () => { finDibujo(); showTab("p-stops"); if (zonas) { $("zonaBox").hidden = false; renderZonas(); } });
