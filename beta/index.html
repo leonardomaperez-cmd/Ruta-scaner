@@ -2971,8 +2971,14 @@ input:disabled { opacity: .45; }
     $("zonaBarTxt").textContent = dibujo.length < 3 ? "El mapa quedó quieto. Tocá puntos alrededor de las direcciones para marcar la zona (" + dibujo.length + " de mínimo 3)"
       : "Adentro: " + its.length + " parada" + (its.length === 1 ? "" : "s") + " · " + its.reduce((n, it) => n + pq(it), 0) + " paquetes. Podés arrastrar los puntos para ajustar. Tocá Listo.";
   }
+  // ordena los puntos alrededor del centro: así el borde queda como un "círculo" y nunca se cruza
+  function ordenarDibujo() {
+    if (!dibujo || dibujo.length < 3) return;
+    const cy = dibujo.reduce((a, p) => a + p[0], 0) / dibujo.length, cx = dibujo.reduce((a, p) => a + p[1], 0) / dibujo.length;
+    dibujo.sort((a, b) => Math.atan2(a[0] - cy, a[1] - cx) - Math.atan2(b[0] - cy, b[1] - cx));
+  }
   function pintarDibujo() {
-    drawLayer.clearLayers(); if (!dibujo) return;
+    drawLayer.clearLayers(); if (!dibujo) return; ordenarDibujo();
     let shape = null;
     if (dibujo.length >= 3) shape = L.polygon(dibujo, { color: "#ffb74d", weight: 3, dashArray: "6 6", fillOpacity: .18, interactive: false }).addTo(drawLayer);
     else if (dibujo.length === 2) shape = L.polyline(dibujo, { color: "#ffb74d", weight: 3, dashArray: "6 6", interactive: false }).addTo(drawLayer);
