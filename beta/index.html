@@ -127,7 +127,7 @@ body.zfrozen .leaflet-gl-layer, body.zfrozen .maplibregl-canvas { pointer-events
 body.zfrozen #map { touch-action: none; }
 body.zfrozen .fabs, body.zfrozen .map-ctl, body.zfrozen .revbub, body.zfrozen .vozbub, body.zfrozen .xbub { display: none !important; }
 #zonaBar .row { display: flex; gap: 8px; flex-wrap: nowrap; }
-#zonaBar .row .btn { flex: 1; min-height: 40px; padding: 6px; }
+#zonaBar .row .btn { flex: 1; min-height: 40px; padding: 6px; font-size: .85rem; }
 #zonaIn .big { font: 700 1.4rem/1.1 var(--display); color: #85f8c4; }
 #zonaIn .row { display: flex; gap: 8px; }
 #zonaIn .row .btn { flex: 1; min-height: 42px; padding: 8px; }
@@ -386,7 +386,7 @@ input:disabled { opacity: .45; }
 </div>
 <div id="zonaBar" hidden>
   <div id="zonaBarTxt">El mapa quedó quieto. Tocá puntos alrededor de las direcciones para marcar la zona (mínimo 3). Después podés arrastrarlos.</div>
-  <div class="row"><button class="btn" id="zonaBarUndo" type="button">↩ Deshacer</button><button class="btn" id="zonaBarNo" type="button">Cancelar</button><button class="btn btn-primary" id="zonaBarOk" type="button">Listo</button></div>
+  <div class="row"><button class="btn" id="zonaBarUndo" type="button">↩ Deshacer</button><button class="btn" id="zonaBarNo" type="button">Cancelar</button><button class="btn btn-primary" id="zonaBarOk" type="button">Listo</button><button class="btn btn-primary" id="zonaBarShare" type="button">📤 Compartir</button></div>
 </div>
 <div id="zonaIn" role="alert" hidden>
   <div class="big">Te pasaron una zona</div>
@@ -471,7 +471,7 @@ input:disabled { opacity: .45; }
     <div class="card" id="zonaBox" hidden style="margin-top:8px">
       <label class="label" for="zonaMax">O dividir solo: paquetes por zona (máximo)</label>
       <input id="zonaMax" type="text" inputmode="numeric" autocomplete="off" placeholder="15">
-      <span class="note">Para pasar una parada de una zona a otra, tocala en el mapa. Una parada con +2 cuenta 3 paquetes. Las zonas siguen el orden de la ruta optimizada, así cada una queda junta en el mapa. Una dirección nunca se parte entre dos zonas.</span>
+      <span class="note">Una parada con +2 cuenta 3 paquetes. Las zonas siguen el orden de la ruta optimizada, así cada una queda junta en el mapa. Una dirección nunca se parte entre dos zonas.</span>
       <div class="row"><button id="zonaCancel" class="btn" type="button">Cerrar</button><button id="zonaGo" class="btn btn-primary" type="button">Dividir</button></div>
       <button id="zonaDraw" class="btn" type="button">✏️ Marcar otra zona en el mapa</button>
       <div id="zonaList"></div>
@@ -2845,12 +2845,10 @@ input:disabled { opacity: .45; }
     zoneLayer.clearLayers(); if (!zonas) return; const all = [];
     zonas.forEach((z, i) => {
       const its = z.map(byNum).filter(it => it && typeof it.lat === "number"); if (!its.length) return;
-      const col = ZCOL[i % ZCOL.length], pts = its.map(it => [it.lat, it.lng]); all.push(...pts);
+      const pts = its.map(it => [it.lat, it.lng]); all.push(...pts);
+      // se ve igual que como se marcó: solo el borde naranja, sin círculos de colores
       const h = z.poly && z.poly.length >= 3 ? z.poly : hull(pts);
-      if (h.length >= 3) L.polygon(h, { color: col, weight: 3, fillOpacity: .15, interactive: false }).addTo(zoneLayer);
-      // tocar una parada de una zona permite pasarla a otra zona (o sacarla de las zonas)
-      its.forEach(it => L.circleMarker([it.lat, it.lng], { pane: "zonaPane", radius: 17, color: col, weight: 4, fillColor: col, fillOpacity: .01 })
-        .bindPopup(() => moverPopup(it.num, i), { minWidth: 180 }).addTo(zoneLayer));
+      if (h.length >= 3) L.polygon(h, { color: "#ffb74d", weight: 3, dashArray: "6 6", fillOpacity: .18, interactive: false }).addTo(zoneLayer);
       const c = [pts.reduce((a, p) => a + p[0], 0) / pts.length, pts.reduce((a, p) => a + p[1], 0) / pts.length];
       L.tooltip({ permanent: true, direction: "center", className: "zlbl" }).setLatLng(c).setContent("Zona " + (i + 1)).addTo(zoneLayer);
     });
@@ -2907,15 +2905,15 @@ input:disabled { opacity: .45; }
     zonas.forEach((z, i) => {
       const its = z.map(byNum).filter(Boolean); if (!its.length) return;
       const row = document.createElement("div"); row.className = "zrow";
-      const dot = document.createElement("i"); dot.style.background = ZCOL[i % ZCOL.length];
+      const dot = document.createElement("i"); dot.style.background = "#ffb74d";
       const t = document.createElement("div");
       t.innerHTML = "<b>Zona " + (i + 1) + "</b><div class='note'>" + its.length + " parada" + (its.length > 1 ? "s" : "") + " · " + its.reduce((n, it) => n + pq(it), 0) + " paquetes · " + its.map(it => code(it.num)).slice(0, 6).join(", ") + (its.length > 6 ? "…" : "") + "</div>";
       const b = document.createElement("div"); b.className = "zb";
       const ver = document.createElement("button"); ver.className = "mini"; ver.type = "button"; ver.textContent = "🗺️ Ver";
       ver.onclick = () => { closeSheets(); map.fitBounds(its.filter(it => typeof it.lat === "number").map(it => [it.lat, it.lng]), { padding: [40, 40], maxZoom: 16 }); };
       const pas = document.createElement("button"); pas.className = "mini"; pas.type = "button"; pas.textContent = "📤 Pasar";
-      pas.onclick = async () => { await pasarZona(its, i + 1); quitar.hidden = false; };
-      const quitar = document.createElement("button"); quitar.className = "mini"; quitar.type = "button"; quitar.textContent = "🗑️ Ya la pasé, quitarla"; quitar.hidden = true;
+      pas.onclick = async () => { await pasarZona(its, i + 1); quitar.hidden = false; z.shared = true; };
+      const quitar = document.createElement("button"); quitar.className = "mini"; quitar.type = "button"; quitar.textContent = "🗑️ Ya la pasé, quitarla"; quitar.hidden = !z.shared;
       let qt = 0;
       quitar.onclick = () => {
         if (Date.now() - qt > 4000) { qt = Date.now(); quitar.textContent = "Tocá de nuevo para quitar " + its.length; return; }
@@ -2973,8 +2971,14 @@ input:disabled { opacity: .45; }
     $("zonaBarTxt").textContent = dibujo.length < 3 ? "El mapa quedó quieto. Tocá puntos alrededor de las direcciones para marcar la zona (" + dibujo.length + " de mínimo 3)"
       : "Adentro: " + its.length + " parada" + (its.length === 1 ? "" : "s") + " · " + its.reduce((n, it) => n + pq(it), 0) + " paquetes. Podés arrastrar los puntos para ajustar. Tocá Listo.";
   }
+  // ordena los puntos alrededor del centro: así el borde queda como un "círculo" y nunca se cruza
+  function ordenarDibujo() {
+    if (!dibujo || dibujo.length < 3) return;
+    const cy = dibujo.reduce((a, p) => a + p[0], 0) / dibujo.length, cx = dibujo.reduce((a, p) => a + p[1], 0) / dibujo.length;
+    dibujo.sort((a, b) => Math.atan2(a[0] - cy, a[1] - cx) - Math.atan2(b[0] - cy, b[1] - cx));
+  }
   function pintarDibujo() {
-    drawLayer.clearLayers(); if (!dibujo) return;
+    drawLayer.clearLayers(); if (!dibujo) return; ordenarDibujo();
     let shape = null;
     if (dibujo.length >= 3) shape = L.polygon(dibujo, { color: "#ffb74d", weight: 3, dashArray: "6 6", fillOpacity: .18, interactive: false }).addTo(drawLayer);
     else if (dibujo.length === 2) shape = L.polyline(dibujo, { color: "#ffb74d", weight: 3, dashArray: "6 6", interactive: false }).addTo(drawLayer);
@@ -3001,19 +3005,22 @@ input:disabled { opacity: .45; }
   $("zonaDraw").addEventListener("click", () => empezarDibujo());
   $("zonaBarUndo").addEventListener("click", () => { if (dibujo && dibujo.length) { dibujo.pop(); pintarDibujo(); } });
   $("zonaBarNo").addEventListener("click", () => { finDibujo(); showTab("p-stops"); if (zonas) { $("zonaBox").hidden = false; renderZonas(); } });
-  $("zonaBarOk").addEventListener("click", () => {
+  function guardarZona(share) {
     const its = dibujo ? dentroDe(dibujo) : [];
     if (!its.length) { toast(dibujo && dibujo.length >= 3 ? "No quedó ninguna parada pendiente adentro" : "Marcá al menos 3 puntos", true); return; }
     const nums = new Set(its.map(it => it.num)), poly = dibujo.map(p => p.slice()), old = zonas && editIdx >= 0 ? zonas[editIdx] : null;
-    const nueva = its.map(it => it.num); nueva.poly = poly;
+    const nueva = its.map(it => it.num); nueva.poly = poly; if (share || (old && old.shared)) nueva.shared = true;
     // una parada va en una sola zona: se saca de las demás (conservando sus bordes)
-    zonas = (zonas || []).map(z => { if (z === old) return z; const f = z.filter(n => !nums.has(n)); f.poly = z.poly; return f; });
+    zonas = (zonas || []).map(z => { if (z === old) return z; const f = z.filter(n => !nums.has(n)); f.poly = z.poly; f.shared = z.shared; return f; });
     let pos;
     if (old) { pos = zonas.indexOf(old); zonas[pos] = nueva; } else { zonas.push(nueva); pos = zonas.length - 1; }
     zonas = zonas.filter(z => z.length); pos = zonas.indexOf(nueva);
     finDibujo(); showTab("p-stops"); $("zonaMax").value = store.get("zonaMax", 15); $("zonaBox").hidden = false;
     renderZonas(); drawZonas(false); toast("Zona " + (pos + 1) + (old ? " actualizada: " : " marcada: ") + its.length + " paradas");
-  });
+    if (share) pasarZona(its, pos + 1); // abre compartir (WhatsApp, etc.) con el link de la zona
+  }
+  $("zonaBarOk").addEventListener("click", () => guardarZona(false));
+  $("zonaBarShare").addEventListener("click", () => guardarZona(true));
   // al abrir un link de zona: se guarda, se limpia la dirección y se pregunta (después de entrar a la cuenta)
   { const m = location.hash.match(/[#&]zona=([^&]+)/); if (m) { store.set("zonaRecibida", m[1]); history.replaceState(null, "", location.pathname + location.search); } }
   async function ofrecerZona() {
