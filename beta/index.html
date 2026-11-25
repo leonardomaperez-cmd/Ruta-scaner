@@ -1849,6 +1849,29 @@ a.btn { color: var(--foreground); } a.btn-primary { color: var(--primary-foregro
     tick();
   }
   function stopLiveQR() { liveRun++; liveSeen = ""; }
+  // botón de prueba de Ajustes: abre la cámara con el lector en vivo y devuelve el texto del primer QR (null = cancelado)
+  window.escanearQRVivo = () => new Promise(async (res, rej) => {
+    const box = document.createElement("div");
+    box.style.cssText = "position:fixed;inset:0;z-index:9999;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center";
+    box.innerHTML = '<video playsinline muted autoplay style="width:100%;height:100%;object-fit:cover"></video>' +
+      '<div style="position:absolute;width:62vmin;height:62vmin;border:3px solid #fff;border-radius:18px;box-shadow:0 0 0 9999px rgba(0,0,0,.45)"></div>' +
+      '<div style="position:absolute;top:18px;left:0;right:0;text-align:center;color:#fff;font:600 16px system-ui">Apuntá al QR de la etiqueta</div>' +
+      '<button type="button" style="position:absolute;bottom:28px;padding:12px 28px;border-radius:24px;border:0;font:600 16px system-ui">Cancelar</button>';
+    document.body.append(box);
+    const v = box.querySelector("video"); let st = null, on = true;
+    const fin = (val, e) => { on = false; if (st) st.getTracks().forEach(t => t.stop()); box.remove(); e ? rej(e) : res(val); };
+    box.querySelector("button").onclick = () => fin(null);
+    try { st = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }); }
+    catch (e) { return fin(null, new Error("no se pudo abrir la cámara")); }
+    if (!on) { st.getTracks().forEach(t => t.stop()); return; }
+    v.srcObject = st; try { await v.play(); } catch {}
+    const tick = async () => {
+      if (!on) return;
+      if (v.videoWidth) { let raw = ""; try { raw = String(await decodeLive(v) || "").trim(); } catch {} if (raw && on) { try { navigator.vibrate && navigator.vibrate(80); } catch {} return fin(raw); } }
+      setTimeout(tick, "BarcodeDetector" in window ? 200 : 350);
+    };
+    tick();
+  });
   async function onLiveQR(raw) {
     const id = await readQR(null, raw);
     if (!id) return; // QR que no sirve: se ignora, la etiqueta se lee con el botón
@@ -3522,7 +3545,18 @@ const CUENTA = {
       try { const d = await ml({ accion: "link" }); location.href = d.url; }
       catch (e) { $("mlTestMsg").textContent = "No se pudo abrir: " + (e.message || e); $("mlMineBtn").disabled = false; }
     });
-    $("mlTestBtn").addEventListener("click", () => { $("mlTestFile").value = ""; $("mlTestFile").click(); });
+    // lee el QR en vivo con la cámara (sin sacar foto); si la cámara no abre, queda la foto como antes
+    $("mlTestBtn").addEventListener("click", async () => {
+      const out = $("mlTestMsg");
+      let raw = null;
+      try { raw = window.escanearQRVivo ? await window.escanearQRVivo() : undefined; }
+      catch { raw = undefined; }
+      if (raw === undefined) { $("mlTestFile").value = ""; $("mlTestFile").click(); return; }
+      if (raw === null) return;
+      let q = null; try { const o = JSON.parse(raw); if (o && o.id != null && o.sender_id != null) q = { id: String(o.id), sender_id: String(o.sender_id) }; } catch {}
+      if (!q) { out.textContent = "El QR no es de Mercado Libre Flex (dice: " + raw.slice(0, 80) + ")."; return; }
+      try { await mlProbar(q.id, q.sender_id); } catch (e) { out.textContent = "Error: " + (e.message || e); }
+    });
     $("mlTestFile").addEventListener("change", async () => {
       const f = $("mlTestFile").files[0]; if (!f) return;
       const out = $("mlTestMsg"); out.textContent = "Leyendo el QR…";
