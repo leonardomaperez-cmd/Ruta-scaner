@@ -125,6 +125,7 @@ body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--body); ov
 #zonaBar[hidden] { display: none; }
 body.zfrozen .leaflet-gl-layer, body.zfrozen .maplibregl-canvas { pointer-events: none !important; }
 body.zfrozen #map { touch-action: none; }
+body.zfrozen path.leaflet-interactive { pointer-events: none !important; }
 body.zfrozen .fabs, body.zfrozen .map-ctl, body.zfrozen .revbub, body.zfrozen .vozbub, body.zfrozen .xbub { display: none !important; }
 #zonaBar .row { display: flex; gap: 8px; flex-wrap: nowrap; }
 #zonaBar .row .btn { flex: 1; min-height: 40px; padding: 6px; font-size: .85rem; }
@@ -3164,7 +3165,9 @@ a.btn { color: var(--foreground); } a.btn-primary { color: var(--primary-foregro
       const pts = its.map(it => [it.lat, it.lng]); all.push(...pts);
       // se ve igual que como se marcó: solo el borde naranja, sin círculos de colores
       const h = z.poly && z.poly.length >= 3 ? z.poly : hull(pts);
-      if (h.length >= 3) L.polygon(h, { color: "#ffb74d", weight: 3, dashArray: "6 6", fillOpacity: .18, interactive: false }).addTo(zoneLayer);
+      // tocar adentro de la zona abre las opciones (eliminar, compartir)
+      if (h.length >= 3) L.polygon(h, { color: "#ffb74d", weight: 3, dashArray: "6 6", fillOpacity: .18 })
+        .bindPopup(() => zonaPopup(i), { minWidth: 210 }).addTo(zoneLayer);
       const c = [pts.reduce((a, p) => a + p[0], 0) / pts.length, pts.reduce((a, p) => a + p[1], 0) / pts.length];
       L.tooltip({ permanent: true, direction: "center", className: "zlbl" }).setLatLng(c).setContent("Zona " + (i + 1)).addTo(zoneLayer);
     });
@@ -3216,6 +3219,29 @@ a.btn { color: var(--foreground); } a.btn-primary { color: var(--primary-foregro
     if (sinMapa.length) toast(sinMapa.length + " parada(s) sin ubicar en el mapa no entraron en ninguna zona", true);
     renderZonas(); drawZonas(true);
   }
+  // saca de mi lista las paradas de la zona (ya se la pasé a otro chofer) y borra la zona
+  function quitarZonaYParadas(i) {
+    const nums = new Set(zonas[i]);
+    items.forEach(it => { if (nums.has(it.num)) { if (it.photo) fotos.del(it.num); if (it.cfoto) fotos.del("c" + it.num); } });
+    items = items.filter(it => !nums.has(it.num));
+    if (route) { route.order = route.order.filter(n => !nums.has(n)); if (!route.order.length) route = null; }
+    zonas = zonas.filter((_, k) => k !== i); if (!zonas.length) zonas = null;
+    save(); refresh(false); renderZonas(); drawZonas(false);
+    toast("Zona eliminada con sus " + nums.size + " paradas. Tocá «Optimizar ruta» para reordenar lo que te queda");
+  }
+  function zonaPopup(i) {
+    const z = zonas[i], its = z.map(byNum).filter(Boolean), d = document.createElement("div"); d.style.display = "grid"; d.style.gap = "6px";
+    const h = document.createElement("b"); h.textContent = "Zona " + (i + 1) + " · " + its.length + " paradas · " + its.reduce((n, it) => n + pq(it), 0) + " paquetes"; d.append(h);
+    const btn = (txt, fn) => { const b = document.createElement("button"); b.className = "mini"; b.type = "button"; b.textContent = txt; b.onclick = fn; d.append(b); return b; };
+    let t0 = 0;
+    const del = btn("🗑️ Eliminar zona y sus paradas", () => {
+      if (Date.now() - t0 > 4000) { t0 = Date.now(); del.textContent = "Tocá de nuevo para eliminar " + its.length + " paradas"; return; }
+      map.closePopup(); quitarZonaYParadas(i);
+    });
+    btn("✕ Borrar solo el marcado", () => { map.closePopup(); zonas = zonas.filter((_, k) => k !== i); if (!zonas.length) zonas = null; renderZonas(); drawZonas(false); toast("Marcado borrado. Las paradas siguen en tu lista"); });
+    if (!z.shared) btn("📤 Compartir", async () => { map.closePopup(); await pasarZona(its, i + 1); z.shared = true; renderZonas(); });
+    return d;
+  }
   function renderZonas() {
     const box = $("zonaList"); box.textContent = ""; if (!zonas) return;
     zonas.forEach((z, i) => {
@@ -3233,13 +3259,7 @@ a.btn { color: var(--foreground); } a.btn-primary { color: var(--primary-foregro
       let qt = 0;
       quitar.onclick = () => {
         if (Date.now() - qt > 4000) { qt = Date.now(); quitar.textContent = "Tocá de nuevo para quitar " + its.length; return; }
-        const nums = new Set(its.map(it => it.num));
-        items.forEach(it => { if (nums.has(it.num)) { if (it.photo) fotos.del(it.num); if (it.cfoto) fotos.del("c" + it.num); } });
-        items = items.filter(it => !nums.has(it.num));
-        if (route) { route.order = route.order.filter(n => !nums.has(n)); if (!route.order.length) route = null; }
-        zonas = zonas.filter((_, k) => k !== i); if (!zonas.length) zonas = null;
-        save(); refresh(false); renderZonas(); drawZonas(false);
-        toast("Zona quitada. Tocá «Optimizar ruta» para reordenar lo que te queda");
+        quitarZonaYParadas(i);
       };
       const borde = document.createElement("button"); borde.className = "mini"; borde.type = "button"; borde.textContent = "✏️ Mover borde";
       borde.onclick = () => { const pts = its.filter(it => typeof it.lat === "number").map(it => [it.lat, it.lng]); empezarDibujo(z.poly && z.poly.length >= 3 ? z.poly : hull(pts), i); };
