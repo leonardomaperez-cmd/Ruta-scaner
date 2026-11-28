@@ -96,6 +96,15 @@ body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--body); ov
 .btn-primary:active { transform: scale(.98); }
 .btn[disabled] { opacity: .5; }
 .refrow { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+/* cámara dentro del formulario «Nueva dirección» */
+.inlcam { position: relative; border-radius: 14px; overflow: hidden; background: #000; aspect-ratio: 4 / 3; max-height: 46vh; width: 100%; }
+.inlcam video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.inlcam .ifr { position: absolute; inset: 20% 8% 22%; border: 3px solid rgba(255,255,255,.9); border-radius: 14px; box-shadow: 0 0 0 999px rgba(0,0,0,.35); transition: border-color .15s; pointer-events: none; }
+.inlcam .ifr.hit { border-color: #22c55e; }
+.inlcam .ihint { position: absolute; top: 8px; left: 8px; right: 52px; color: #fff; font: 600 .85rem/1.3 var(--display, system-ui); text-shadow: 0 1px 3px #000; }
+.inlcam .ix { position: absolute; top: 6px; right: 6px; width: 38px; height: 38px; border-radius: 50%; border: 0; background: rgba(0,0,0,.55); color: #fff; font-size: 1.1rem; }
+.inlcam .ishot { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); border: 0; border-radius: 22px; padding: 10px 18px; font: 700 .95rem var(--display, system-ui); background: var(--primary, #4ade80); color: var(--primary-foreground, #052e16); box-shadow: 0 2px 10px rgba(0,0,0,.4); }
+.inlcam .ishot:disabled { opacity: .6; }
 .mic { min-width: 48px; font-size: 1.3rem; padding: 0 12px; }
 .mic.on { background: var(--bad); color: #fff; border-color: var(--bad); }
 .pop { display: grid; gap: 6px; font: 500 14px/1.35 var(--body); color: #16202b; min-width: 210px; }
@@ -1872,6 +1881,61 @@ a.btn { color: var(--foreground); } a.btn-primary { color: var(--primary-foregro
     };
     tick();
   });
+  // ---------- cámara dentro del formulario «Nueva dirección» ----------
+  // Ventanita con la cámara: «Leer etiqueta» saca la foto del recuadro y lee la dirección (y el QR si se ve, para Mercado Libre).
+  // Lo leído completa el formulario y la cámara se apaga. Se apaga sola si se cierra el formulario.
+  let icamStop = null;
+  async function inlineCam(box, fill, fallback) {
+    if (icamStop) { const was = icamStop.box === box; icamStop(); if (was) return; } // segundo toque: la cierra
+    const v = box.querySelector("video"), fr = box.querySelector(".ifr"), hint = box.querySelector(".ihint"), shot = box.querySelector(".ishot");
+    let st = null, on = true, busy = false;
+    const idle = "Encuadrá la dirección de la etiqueta y tocá «Leer etiqueta»";
+    const stop = () => { on = false; if (st) st.getTracks().forEach(t => t.stop()); v.srcObject = null; box.hidden = true; if (icamStop === stop) icamStop = null; };
+    stop.box = box; icamStop = stop;
+    box.querySelector(".ix").onclick = stop;
+    box.hidden = false; hint.textContent = "Abriendo la cámara…"; warmOCR();
+    try {
+      const CAM = plug("Camera");
+      if (CAM) { const p = await CAM.requestPermissions({ permissions: ["camera"] }).catch(() => null); if (p && p.camera === "denied") throw new Error("permiso"); }
+      st = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+    } catch (e) { stop(); fallback(); return; }
+    if (!on) { st.getTracks().forEach(t => t.stop()); return; }
+    v.srcObject = st; try { await v.play(); } catch {}
+    hint.textContent = idle;
+    box.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    // recorte: lo que se ve dentro del recuadro blanco (con margen), igual que el escáner grande
+    const crop = () => {
+      const vw = v.videoWidth, vh = v.videoHeight; if (!vw || !vh) return null;
+      const er = v.getBoundingClientRect(), rr = fr.getBoundingClientRect();
+      const sc = Math.max(er.width / vw, er.height / vh), ox = (er.width - vw * sc) / 2, oy = (er.height - vh * sc) / 2;
+      const mx = rr.width * 0.08, my = rr.height * 0.12;
+      let x = Math.max(0, (rr.left - er.left - mx - ox) / sc), y = Math.max(0, (rr.top - er.top - my - oy) / sc);
+      const w = Math.min(vw - x, (rr.width + 2 * mx) / sc), h = Math.min(vh - y, (rr.height + 2 * my) / sc);
+      const c = document.createElement("canvas"); c.width = Math.round(w); c.height = Math.round(h);
+      c.getContext("2d").drawImage(v, x, y, w, h, 0, 0, c.width, c.height); return c;
+    };
+    const read = async () => {
+      if (busy) return; busy = true; shot.disabled = true; hint.textContent = "Leyendo la etiqueta…";
+      try {
+        const c = crop(); if (!c) throw new Error("cámara");
+        const full = document.createElement("canvas"); full.width = v.videoWidth; full.height = v.videoHeight; full.getContext("2d").drawImage(v, 0, 0);
+        fr.classList.add("hit"); setTimeout(() => fr.classList.remove("hit"), 400);
+        const id = await readQR(full), flex = qrFlex;
+        const known = id && items.find(it => it.qr === id);
+        if (known) { hint.textContent = "Ese paquete ya está cargado: " + code(known.num) + (known.address ? " · " + known.address : "") + "."; return; }
+        const b = await new Promise(r => c.toBlob(r, "image/jpeg", 0.92));
+        const r = await readLabel(b, flex);
+        if (!on) return;
+        if (!r || !r.address) { hint.textContent = "No leí la dirección. Acercá la etiqueta y tocá «Leer» de nuevo."; return; }
+        stop(); fill(r); toast("✓ Leída: " + r.address + (r.by === "Mercado Libre" ? " (de Mercado Libre)" : "") + ". Revisala y tocá Guardar.");
+      } catch (e) { if (on) hint.textContent = "No se pudo leer (" + (e.message || e) + "). Probá de nuevo."; }
+      finally { busy = false; shot.disabled = false; }
+    };
+    shot.onclick = read;
+    // si se cierra el formulario con la cámara abierta, se apaga
+    const watch = () => { if (!on) return; if (!box.isConnected || box.offsetParent === null) return stop(); setTimeout(watch, 500); };
+    watch();
+  }
   async function onLiveQR(raw) {
     const id = await readQR(null, raw);
     if (!id) return; // QR que no sirve: se ignora, la etiqueta se lee con el botón
@@ -1985,6 +2049,7 @@ a.btn { color: var(--foreground); } a.btn-primary { color: var(--primary-foregro
     const stop = route ? route.order.indexOf(it.num) + 1 : 0;
     c.innerHTML = `<div class="rhead"><b></b><span></span></div>
       <label class="label">Dirección</label><div class="refrow"><textarea rows="2" data-f="addr"></textarea><button class="btn mic" type="button" data-f="scan" aria-label="Escanear la etiqueta"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M7 10h10M7 14h7"/></svg></button></div>
+      <div class="inlcam" data-f="icam" hidden><video playsinline muted autoplay></video><div class="ifr"></div><div class="ihint">Encuadrá la dirección de la etiqueta y tocá «Leer etiqueta»</div><button class="ix" type="button" aria-label="Cerrar cámara">✕</button><button class="ishot" type="button">📸 Leer etiqueta</button></div>
       <button class="mini" type="button" data-f="alt" hidden style="text-align:left"></button>
       <div class="checkmap" data-f="cmap" hidden></div><span class="note" data-f="cinfo" hidden></span>
       <label class="label">Referencia (opcional)</label><div class="refrow"><input type="text" data-f="ref" placeholder="Ej.: portón negro, timbre 2"><button class="btn mic" type="button" data-f="mic" aria-label="Dictar la referencia">🎤</button></div>
@@ -1999,9 +2064,10 @@ a.btn { color: var(--foreground); } a.btn-primary { color: var(--primary-foregro
     if (isNew) { f("del").textContent = "Limpiar"; f("ok").textContent = "Guardar"; }
     f("addr").value = it.address; f("ref").value = it.ref || ""; f("tel").value = it.tel || "";
     const pv = addrPreview(f("addr"), f("cmap"), f("cinfo"));
+    const fillFrom = (r) => { f("addr").value = r.address; if (r.ref && !f("ref").value) f("ref").value = r.ref; pv.now(); };
     f("scan").addEventListener("click", () => {
-      scanInto = (r) => { f("addr").value = r.address; if (r.ref && !f("ref").value) f("ref").value = r.ref; pv.now(); };
-      showTab("p-scan");
+      // cámara dentro del formulario; si no abre (permiso, navegador viejo), el escáner de pantalla completa de siempre
+      inlineCam(f("icam"), fillFrom, () => { scanInto = fillFrom; showTab("p-scan"); });
     });
     suggestFor(f("addr"), () => pv.now());
     if (it.alt) { f("alt").hidden = false; f("alt").textContent = "El lector del teléfono leyó otra cosa: usar «" + it.alt + "»"; f("alt").addEventListener("click", () => { f("addr").value = it.alt; f("alt").hidden = true; }); }
